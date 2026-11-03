@@ -15,6 +15,9 @@ import { ParticipantService } from '../../../core/services/participant.service';
           <p class="sub-text">{{ totalCount() }} total &middot; {{ eligibleCount() }} eligible</p>
         </div>
         <div class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" (click)="exportExcel()" [disabled]="totalCount() === 0">
+            Export to Excel
+          </button>
           <button class="btn btn-secondary btn-sm" (click)="resetEligibility()">Reset Participants</button>
           <!-- <button class="btn btn-danger btn-sm" (click)="confirmClearAll()" [disabled]="totalCount() === 0">
             Clear All
@@ -104,15 +107,31 @@ import { ParticipantService } from '../../../core/services/participant.service';
           </div>
         } @else {
           <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;background:var(--gray-50)">
-            <input class="form-control" type="text" [(ngModel)]="searchQuery"
-              placeholder="Search participants..." style="max-width:280px;padding:7px 12px" />
-            <span style="font-size:12px;color:var(--text-muted);margin-left:auto">
+            <div style="position:relative;display:flex;align-items:center;flex:1;max-width:340px">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="position:absolute;left:10px;color:var(--text-muted);pointer-events:none">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input class="form-control" type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
+                placeholder="Search by name or contact..." style="width:100%;padding:7px 30px 7px 32px" />
+              @if (searchQuery()) {
+                <button (click)="searchQuery.set('')" title="Clear search"
+                  style="position:absolute;right:8px;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;line-height:1;padding:2px 4px">&times;</button>
+              }
+            </div>
+            <button class="btn btn-ghost btn-sm" (click)="exportExcel()" [disabled]="participants().length === 0"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;margin-left:auto">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export Excel
+            </button>
+            <span style="font-size:12px;color:var(--text-muted)">
               {{ filteredParticipants().length }} of {{ participants().length }}
             </span>
           </div>
-          <div class="table-wrap" style="max-height:440px;overflow-y:auto">
+          <div class="table-wrap" style="max-height:480px;overflow-y:scroll">
             <table>
-              <thead>
+              <thead style="position:sticky;top:0;background:var(--gray-50);z-index:2;box-shadow:0 1px 0 var(--border)">
                 <tr>
                   <th>#</th>
                   <th>Name</th>
@@ -172,7 +191,7 @@ export class ParticipantsPanelComponent implements OnInit {
   bulkText = '';
   singleName = '';
   singleContact = '';
-  searchQuery = '';
+  readonly searchQuery = signal('');
   inputTab = signal<'bulk' | 'single' | 'import'>('bulk');
   lastAddedCount = signal(0);
   importResult = signal(0);
@@ -181,10 +200,10 @@ export class ParticipantsPanelComponent implements OnInit {
   readonly totalCount = computed(() => this.participantSvc.totalCount());
   readonly eligibleCount = computed(() => this.participantSvc.eligibleCount());
   readonly filteredParticipants = computed(() => {
-    const q = this.searchQuery.toLowerCase();
+    const q = this.searchQuery().toLowerCase().trim();
     if (!q) return this.participants();
     return this.participants().filter(p =>
-      p.name.toLowerCase().includes(q) || p.contact_info?.toLowerCase().includes(q)
+      p.name.toLowerCase().includes(q) || (p.contact_info && p.contact_info.toLowerCase().includes(q))
     );
   });
 
@@ -232,6 +251,10 @@ export class ParticipantsPanelComponent implements OnInit {
 
   resetEligibility(): void { this.participantSvc.resetEligibility(); }
   deleteParticipant(id: number): void { this.participantSvc.deleteParticipant(id); }
+
+  exportExcel(): void {
+    this.participantSvc.exportExcel();
+  }
 
   confirmClearAll(): void {
     if (confirm('Delete ALL participants? This cannot be undone.')) {

@@ -296,7 +296,7 @@ import { WinnerService } from './core/services/winner.service';
     /* Main Content */
     .main-content {
       flex: 1;
-      overflow: hidden;
+      overflow: scroll;
       display: flex;
       flex-direction: column;
       background: #f7f8f7;

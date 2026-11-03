@@ -213,14 +213,14 @@ export class SqliteService {
     return this.query<DrawHistoryWithDetails>(`
       SELECT
         dh.id, dh.prize_id, dh.participant_id, dh.drawn_at, dh.spin_batch_id,
-        p.name AS participant_name,
-        pr.title AS prize_title,
-        pr.tier AS prize_tier,
+        COALESCE(p.name, 'Unknown Participant') AS participant_name,
+        COALESCE(pr.title, 'Unknown Prize') AS prize_title,
+        COALESCE(pr.tier, 'Minor') AS prize_tier,
         pr.image_data AS prize_image_data
       FROM draw_history dh
-      JOIN participants p ON dh.participant_id = p.id
-      JOIN prizes pr ON dh.prize_id = pr.id
-      ORDER BY dh.drawn_at DESC
+      LEFT JOIN participants p ON dh.participant_id = p.id
+      LEFT JOIN prizes pr ON dh.prize_id = pr.id
+      ORDER BY dh.drawn_at DESC, dh.id DESC
     `);
   }
 }

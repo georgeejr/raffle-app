@@ -1,12 +1,13 @@
-import { Component, OnInit, computed } from '@angular/core';
+import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { WinnerService } from '../../core/services/winner.service';
 import { AppComponent } from '../../app';
 
 @Component({
   selector: 'app-winners-board',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="winners-layout">
       <div class="winners-header">
@@ -42,7 +43,7 @@ import { AppComponent } from '../../app';
       } @else {
         <!-- Grouped by Prize -->
         <div class="groups">
-          @for (group of grouped(); track group.title) {
+          @for (group of grouped(); track (group.title + '-' + $index)) {
             <div class="prize-group card" [class.major-group]="group.tier === 'Major'">
               <div class="group-header">
                 <div class="group-left">
@@ -64,7 +65,7 @@ import { AppComponent } from '../../app';
               </div>
 
               <div class="winners-grid">
-                @for (w of group.winners; track w.id; let i = $index) {
+                @for (w of group.winners; track (w.id ? w.id + '-' + i : i); let i = $index) {
                   <div class="winner-chip">
                     <span class="winner-rank">{{ i + 1 }}</span>
                     <span class="winner-chip-name">{{ w.participant_name }}</span>
@@ -77,11 +78,22 @@ import { AppComponent } from '../../app';
         </div>
 
         <!-- Full Table -->
-        <div class="card" style="padding:0;overflow:hidden">
+        <div class="card history-card" style="padding:0;overflow:hidden">
           <div class="table-section-header">
-            <h3>All Draw History ({{ history().length }})</h3>
+            <h3>All Draw History ({{ filteredHistory().length }} of {{ history().length }})</h3>
+            <div class="history-search-wrap">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="search-icon">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input class="form-control" type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
+                placeholder="Search winners or prizes..." style="width:100%;padding:6px 28px 6px 30px;font-size:13px" />
+              @if (searchQuery()) {
+                <button (click)="searchQuery.set('')" title="Clear search"
+                  style="position:absolute;right:8px;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;line-height:1;padding:2px 4px">&times;</button>
+              }
+            </div>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap history-table-wrap">
             <table>
               <thead>
                 <tr>
@@ -93,9 +105,9 @@ import { AppComponent } from '../../app';
                 </tr>
               </thead>
               <tbody>
-                @for (row of history(); track row.id; let i = $index) {
+                @for (row of filteredHistory(); track (row.id ? row.id + '-' + i : i); let i = $index) {
                   <tr>
-                    <td style="color:var(--text-muted)">{{ i + 1 }}</td>
+                    <td style="color:var(--text-muted);width:50px">{{ i + 1 }}</td>
                     <td style="font-weight:600">{{ row.participant_name }}</td>
                     <td>{{ row.prize_title }}</td>
                     <td>
@@ -121,6 +133,25 @@ import { AppComponent } from '../../app';
       overflow-y: auto;
       padding: 20px 28px 32px;
       gap: 20px;
+    }
+
+    .history-card {
+      border: 1px solid var(--border);
+    }
+
+    .history-table-wrap {
+      max-height: 520px;
+      overflow-y: auto;
+      overflow-x: auto;
+      scrollbar-gutter: stable;
+
+      table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--gray-50);
+        box-shadow: 0 1px 0 var(--border);
+      }
     }
 
     .winners-header {
@@ -208,16 +239,44 @@ import { AppComponent } from '../../app';
     }
 
     .table-section-header {
-      padding: 14px 16px;
+      padding: 12px 16px;
       border-bottom: 1px solid var(--border);
       background: var(--gray-50);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
       h3 { font-size: 14px; color: var(--green-900); }
+    }
+    .history-search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      min-width: 240px;
+    }
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      color: var(--text-muted);
+      pointer-events: none;
     }
   `]
 })
 export class WinnersBoardComponent implements OnInit {
+  readonly searchQuery = signal('');
   readonly history = computed(() => this.winnerSvc.history());
   readonly grouped = computed(() => this.winnerSvc.winnersGroupedByPrize());
+  readonly filteredHistory = computed(() => {
+    const q = this.searchQuery().toLowerCase().trim();
+    const rows = this.history();
+    if (!q) return rows;
+    return rows.filter(r =>
+      (r.participant_name && r.participant_name.toLowerCase().includes(q)) ||
+      (r.prize_title && r.prize_title.toLowerCase().includes(q)) ||
+      (r.prize_tier && r.prize_tier.toLowerCase().includes(q))
+    );
+  });
 
   constructor(
     public winnerSvc: WinnerService,

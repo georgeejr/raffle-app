@@ -27,6 +27,7 @@ interface WinnerDisplay {
       <!-- Top Bar -->
       <div class="raffle-topbar">
         <div class="topbar-left">
+         
           @if (app.isNavCollapsed()) {
             <button class="btn btn-secondary btn-sm" (click)="app.toggleNav()" style="display:inline-flex;align-items:center;gap:6px">
               <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -34,6 +35,11 @@ interface WinnerDisplay {
               </svg>
               <span>Nav</span>
             </button>
+          }
+           @if (app.isNavCollapsed() || isFullscreen()) {
+            <div class="topbar-school-brand" (click)="app.toggleNav()" title="St. Paul School of Santa Maria">
+              <img src="logo.png" alt="St. Paul Logo" class="topbar-logo" />
+            </div>
           }
           <h1 class="page-title">Raffle Draw</h1>
           <div class="stat-row">
@@ -59,7 +65,8 @@ interface WinnerDisplay {
           <app-wheel
             #wheel
             [segments]="wheelSegments()"
-            [size]="580"
+            [size]="650"
+            (spinRequested)="triggerSpin()"
             (winnerSelected)="onWinnerSelected($event)">
           </app-wheel>
 
@@ -90,7 +97,7 @@ interface WinnerDisplay {
               </div>
             }
 
-            <p class="spin-hint">Press <kbd>Space</kbd> to spin &nbsp;·&nbsp; <kbd>F</kbd> for fullscreen</p>
+            <p class="spin-hint">Press <kbd>Space</kbd> or <span style="font-weight:600">drag wheel</span> to spin &nbsp;·&nbsp; <kbd>F</kbd> for fullscreen</p>
           </div>
         </div>
 
@@ -241,6 +248,30 @@ interface WinnerDisplay {
       gap: 16px;
     }
 
+    .topbar-school-brand {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      transition: transform 0.15s ease;
+
+      &:hover {
+        transform: scale(1.05);
+      }
+    }
+
+    .topbar-logo {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 50%;
+      background: #ffffff;
+      padding: 2px;
+      // border: 1.5px solid var(--border-green, #b0d4b5);
+      // box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      flex-shrink: 0;
+      display: block;
+    }
+
     .page-title {
       font-size: 20px;
       color: var(--green-900);
@@ -249,12 +280,12 @@ interface WinnerDisplay {
 
     .stat-row { display: flex; gap: 8px; }
     .stat-chip {
-      font-size: 12px;
+      font-size: 15px;
       font-weight: 600;
       font-family: 'Outfit', sans-serif;
       padding: 3px 10px;
       border-radius: 4px;
-      border: 1px solid var(--border);
+      // border: 1px solid var(--border);
       background: var(--gray-50);
       color: var(--text-secondary);
 
@@ -276,9 +307,11 @@ interface WinnerDisplay {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 28px;
-      padding: 24px;
+      gap: 20px;
+      padding: 16px 20px;
       background: var(--bg-base);
+      min-width: 0;
+      overflow-y: auto;
     }
 
     /* Spin Controls */
@@ -389,7 +422,13 @@ interface WinnerDisplay {
       border-bottom: 1px solid var(--border);
       background: var(--gray-50);
     }
-
+    .prize-card-header {
+      .badge {
+        font-size: 16px;
+        border: 0;
+        background-color: transparent;
+      }
+    }
     .qty-label {
       font-size: 12px;
       font-weight: 700;

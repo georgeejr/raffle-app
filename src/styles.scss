@@ -98,21 +98,28 @@ a {
    SCROLLBAR
    ============================================= */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-200);
-  border-radius: 10px;
+  background: #a8b0a8;
+  border-radius: 4px;
+
+  &:hover {
+    background: #6b736b;
+  }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-300);
+/* Firefox scrollbar support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #a8b0a8 rgba(0, 0, 0, 0.05);
 }
 
 /* =============================================

@@ -75,6 +75,24 @@ export class ParticipantService {
     this._allowRepeat.set(allow);
   }
 
+  exportExcel(): void {
+    const rows = this._participants();
+    const headers = 'No.,Name,Contact/Reference,Status,Created At\n';
+    const lines = rows.map((p, i) =>
+      `"${i + 1}","${(p.name || '').replace(/"/g, '""')}","${(p.contact_info || '').replace(/"/g, '""')}","${p.is_eligible === 1 ? 'Eligible' : 'Drawn'}","${p.created_at || ''}"`
+    ).join('\n');
+    this.download('participants.csv', 'text/csv;charset=utf-8;', '\ufeff' + headers + lines);
+  }
+
+  private download(filename: string, type: string, content: string): void {
+    const blob = new Blob([content], { type });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   /** Placeholder: API integration point */
   async syncFromRegistrationAPI(endpoint: string): Promise<void> {
     // TODO: implement when registration app is ready
