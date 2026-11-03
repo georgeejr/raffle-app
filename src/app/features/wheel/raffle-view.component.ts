@@ -361,7 +361,7 @@ interface WinnerDisplay {
 
     /* Prize Panel */
     .prize-panel {
-      width: 300px;
+      width: 500px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
@@ -528,7 +528,7 @@ interface WinnerDisplay {
     }
 
     .winner-prize-name {
-      font-size: 28px;
+      font-size: 50px;
       font-weight: 800;
       color: var(--green-900);
       font-family: 'Outfit', sans-serif;
@@ -586,7 +586,7 @@ interface WinnerDisplay {
 
     .winner-name {
       font-family: 'Outfit', sans-serif;
-      font-size: 50px;
+      font-size: 80px;
       font-weight: 800;
       color: #1a4d22;
       flex: 1;
