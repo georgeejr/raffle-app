@@ -126,6 +126,7 @@ import { AppComponent } from '../../app';
     </div>
   `,
   styles: [`
+    :host { display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0; }
     .winners-layout {
       display: flex;
       flex-direction: column;

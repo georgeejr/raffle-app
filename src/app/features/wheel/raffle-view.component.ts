@@ -105,7 +105,7 @@ interface WinnerDisplay {
         <!-- RIGHT: Prize Panel -->
         @if (showSidePanel()) {
           <div class="prize-panel">
-            @if (activePrize(); as prize) {
+            @if (activePrize() || awardedPrize(); as prize) {
               <div class="prize-card" [class.prize-major]="prize.tier === 'Major'">
                 <div class="prize-card-header">
                   <span class="badge" [ngClass]="prize.tier === 'Major' ? 'badge-major' : 'badge-minor'">
@@ -206,18 +206,18 @@ interface WinnerDisplay {
 
               <!-- Prize Award Details Card -->
               <div class="prize-award-card">
-                @if (activePrize()?.image_data) {
+                @if (modalPrize()?.image_data) {
                   <div class="prize-award-img-wrap">
-                    <img [src]="activePrize()!.image_data" class="prize-award-img" alt="Prize" />
+                    <img [src]="modalPrize()!.image_data" class="prize-award-img" alt="Prize" />
                   </div>
                 }
                 <div class="prize-award-info">
-                  <span class="badge prize-award-badge" [ngClass]="activePrize()?.tier === 'Major' ? 'badge-major' : 'badge-minor'">
-                    {{ activePrize()?.tier ? activePrize()!.tier + ' Prize' : 'Raffle Prize' }}
+                  <span class="badge prize-award-badge" [ngClass]="modalPrize()?.tier === 'Major' ? 'badge-major' : 'badge-minor'">
+                    {{ modalPrize()?.tier ? modalPrize()!.tier + ' Prize' : 'Raffle Prize' }}
                   </span>
-                  <div class="prize-award-title">{{ activePrize()?.title || 'Raffle Draw Prize' }}</div>
-                  @if (activePrize()?.description) {
-                    <div class="prize-award-desc">{{ activePrize()!.description }}</div>
+                  <div class="prize-award-title">{{ modalPrize()?.title || 'Raffle Draw Prize' }}</div>
+                  @if (modalPrize()?.description) {
+                    <div class="prize-award-desc">{{ modalPrize()!.description }}</div>
                   }
                 </div>
               </div>
@@ -254,12 +254,26 @@ interface WinnerDisplay {
     </div>
   `,
   styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      height: 100%;
+      min-height: 0;
+      width: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+
     .raffle-view {
       display: flex;
       flex-direction: column;
       height: 100%;
+      width: 100%;
       background: var(--bg-base);
       overflow: hidden;
+      flex: 1;
+      min-height: 0;
 
       &.fullscreen {
         position: fixed;
@@ -335,6 +349,8 @@ interface WinnerDisplay {
     .raffle-main {
       display: flex;
       flex: 1;
+      height: 100%;
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -350,17 +366,29 @@ interface WinnerDisplay {
       background: var(--bg-base);
       min-width: 0;
       min-height: 0;
+      height: 100%;
       overflow: hidden;
     }
 
     .wheel-stage {
       flex: 1;
       width: 100%;
-      min-height: 360px;
+      height: 100%;
+      min-height: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       position: relative;
+      align-self: stretch;
+    }
+
+    .wheel-stage app-wheel {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-self: stretch;
+      min-height: 0;
+      min-width: 0;
     }
 
     /* Spin Controls */
@@ -688,7 +716,7 @@ interface WinnerDisplay {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      max-height: 200px;
+      max-height: 800px;
       overflow-y: auto;
       margin-top: 8px;
       padding: 2px;
@@ -720,7 +748,7 @@ interface WinnerDisplay {
     }
 
     .batch-name {
-      font-size: 15px;
+      font-size: 20px;
       font-weight: 700;
       color: var(--green-900);
       flex: 1;
@@ -855,11 +883,13 @@ export class RaffleViewComponent implements OnInit {
   private _currentBatchWinners = signal<WinnerDisplay[]>([]);
   private _spinBatchId = '';
   private _batchSize = 0;
+  private _awardedPrize = signal<Prize | null>(null);
 
   readonly isSpinning = this._isSpinning.asReadonly();
   readonly showWinnerModal = this._showWinnerModal.asReadonly();
   readonly drawMode = this._drawMode.asReadonly();
   readonly currentBatchWinners = this._currentBatchWinners.asReadonly();
+  readonly awardedPrize = this._awardedPrize.asReadonly();
   readonly isFullscreen = signal(false);
   readonly showSidePanel = signal(true);
 
@@ -870,6 +900,7 @@ export class RaffleViewComponent implements OnInit {
   readonly eligibleCount = computed(() => this.participantSvc.eligibleCount());
   readonly allowRepeat = computed(() => this.participantSvc.allowRepeat());
   readonly activePrize = computed(() => this.raffleSvc.activePrize());
+  readonly modalPrize = computed(() => this._awardedPrize() || this.activePrize());
   readonly upcomingPrizes = computed(() => this.raffleSvc.pendingPrizes());
   readonly totalWinners = computed(() => this.winnerSvc.history().length);
 
@@ -927,6 +958,7 @@ export class RaffleViewComponent implements OnInit {
   triggerSpin(direction: 'down' | 'up' = 'down'): void {
     if (!this.canSpin()) return;
     const prize = this.activePrize()!;
+    this._awardedPrize.set({ ...prize });
     if (prize.draw_mode === 'bulk' || this._drawMode() === 'bulk') {
       this.doBulkDraw(prize); return;
     }
@@ -937,8 +969,9 @@ export class RaffleViewComponent implements OnInit {
   }
 
   onWinnerSelected(segment: WheelSegment): void {
-    const prize = this.activePrize();
+    const prize = this.activePrize() || this._awardedPrize();
     if (!prize) return;
+    this._awardedPrize.set({ ...prize });
     this._isSpinning.set(false);
     this.raffleSvc.recordWinner(prize.id, segment.id, this._spinBatchId);
     if (!this.allowRepeat()) this.participantSvc.markDrawn(segment.id);
@@ -951,6 +984,7 @@ export class RaffleViewComponent implements OnInit {
   private doBulkDraw(prize: Prize): void {
     const eligible = this.participantSvc.eligibleParticipants();
     if (!eligible.length) return;
+    this._awardedPrize.set({ ...prize });
     const count = Math.min(prize.quantity_remaining, eligible.length);
     const selected = [...eligible].sort(() => Math.random() - 0.5).slice(0, count);
     this._spinBatchId = crypto.randomUUID();
@@ -972,8 +1006,18 @@ export class RaffleViewComponent implements OnInit {
 
   dismissModal(): void {
     this._showWinnerModal.set(false);
-    const prize = this.activePrize();
-    if (!prize || prize.status === 'completed') this._currentBatchWinners.set([]);
+    const completedPrize = this._awardedPrize() || this.activePrize();
+    this._awardedPrize.set(null);
+    if (!completedPrize || completedPrize.status === 'completed' || completedPrize.quantity_remaining <= 0) {
+      this._currentBatchWinners.set([]);
+      // If there are pending prizes and no active prize, auto-select the next pending prize
+      if (!this.activePrize()) {
+        const next = this.upcomingPrizes()[0];
+        if (next) {
+          this.raffleSvc.setActive(next.id);
+        }
+      }
+    }
   }
 
   selectPrize(prize: Prize): void {
@@ -984,7 +1028,10 @@ export class RaffleViewComponent implements OnInit {
   setDrawMode(mode: DrawMode): void { this._drawMode.set(mode); }
   toggleAllowRepeat(): void { this.participantSvc.setAllowRepeat(!this.allowRepeat()); }
 
-  toggleSidePanel(): void { this.showSidePanel.update(v => !v); }
+  toggleSidePanel(): void {
+    this.showSidePanel.update(v => !v);
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 60);
+  }
 
   toggleFullscreen(): void {
     if (!document.fullscreenElement) {

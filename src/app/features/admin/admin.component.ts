@@ -85,6 +85,7 @@ type AdminTab = 'participants' | 'prizes';
     </div>
   `,
   styles: [`
+    :host { display: flex; flex-direction: column; flex: 1; height: 100%; min-height: 0; }
     .admin-layout { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
     .admin-header {

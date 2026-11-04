@@ -38,6 +38,7 @@ export interface WheelSegment {
       min-width: 0;
       min-height: 0;
       flex: 1;
+      align-self: stretch;
     }
 
     .wheel-wrapper {
@@ -50,6 +51,7 @@ export interface WheelSegment {
       min-width: 0;
       min-height: 0;
       flex: 1;
+      align-self: stretch;
     }
 
     .barrel-casing {
@@ -67,6 +69,7 @@ export interface WheelSegment {
       justify-content: center;
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
       border: 2px solid #1a4d22;
+      align-self: stretch;
     }
 
     .wheel-canvas {
@@ -232,7 +235,23 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
   ngAfterViewInit(): void {
     this.initCtx();
     this.setupResizeObserver();
+    this.measureAndResize();
+    requestAnimationFrame(() => this.measureAndResize());
     this.scheduleDraw();
+  }
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.measureAndResize();
+  }
+
+  private measureAndResize(): void {
+    const casing = this.casingRef?.nativeElement;
+    if (!casing) return;
+    const rect = casing.getBoundingClientRect();
+    if (rect.width > 60 && rect.height > 60) {
+      this.updateDimensions(Math.floor(rect.width), Math.floor(rect.height));
+    }
   }
 
   private setupResizeObserver(): void {
@@ -549,7 +568,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
   }
 
   private startSpinAnimation(startAngle: number, targetAngle: number, winner: WheelSegment): void {
-    const duration = 8000; // 8 seconds of suspenseful spin with extended slow crawl
+    const duration = 16000; // 16 seconds of suspenseful spin with extended slow crawl
     const startTime = performance.now();
     const totalDelta = targetAngle - startAngle;
     const sliceAngle = (Math.PI * 2) / this.DRUM_SLOTS;
@@ -610,11 +629,11 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
 
     // 3D Arcade Casing Deep Metallic Background Fill
     const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    bgGrad.addColorStop(0, '#040604');
-    bgGrad.addColorStop(0.5, '#0d130d');
-    bgGrad.addColorStop(1, '#040604');
+    bgGrad.addColorStop(0, '#020402');
+    bgGrad.addColorStop(0.5, '#070c08');
+    bgGrad.addColorStop(1, '#020402');
     ctx.fillStyle = bgGrad;
-    this.roundRect(ctx, 0, 0, canvas.width, canvas.height, 24);
+    this.roundRect(ctx, 0, 0, canvas.width, canvas.height, 20);
     ctx.fill();
 
     if (n === 0) {
@@ -626,11 +645,18 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     const sliceAngle = (Math.PI * 2) / K;
     const radius = cy * 0.88;
 
+    // Cylinder Drum Width: parallel straight sides (authentic 3D horizontal cylinder)
+    const drumWidth = Math.min(canvas.width * 0.70, 450);
+    const drumX = cx - drumWidth / 2;
+    const railWidth = Math.max(12, Math.min(18, canvas.width * 0.032));
+    const leftRailX = drumX - railWidth;
+    const rightRailX = drumX + drumWidth;
+
     // Center slot in floating units
     const centerSlotFloat = -this.currentAngle / sliceAngle;
     const centerSlotInt = Math.round(centerSlotFloat);
 
-    // Collect visible 3D drum slot panels (only ~7 panels on front face)
+    // Collect visible 3D drum slot panels (front cylinder face)
     interface DrumPanel {
       slotIndex: number;
       segment: WheelSegment;
@@ -638,8 +664,8 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
       thetaCenter: number;
       yTop: number;
       yBot: number;
-      wTop: number;
-      wBot: number;
+      cTop: number;
+      cBot: number;
       zScale: number;
     }
 
@@ -660,14 +686,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
 
         const yTop = cy + radius * Math.sin(cTop);
         const yBot = cy + radius * Math.sin(cBot);
-
-        const zTop = Math.max(0.05, Math.cos(cTop));
-        const zBot = Math.max(0.05, Math.cos(cBot));
-        const zScale = Math.max(0.05, Math.cos(thetaCenter));
-
-        const baseWidth = canvas.width * 0.82;
-        const wTop = baseWidth * (0.64 + 0.36 * zTop);
-        const wBot = baseWidth * (0.64 + 0.36 * zBot);
+        const zScale = Math.max(0.01, Math.cos(thetaCenter));
 
         panels.push({
           slotIndex: j,
@@ -676,8 +695,8 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
           thetaCenter,
           yTop,
           yBot,
-          wTop,
-          wBot,
+          cTop,
+          cBot,
           zScale
         });
       }
@@ -696,49 +715,67 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
       const h = y2 - y1;
       const yMid = (y1 + y2) / 2;
 
-      if (h <= 1) return;
-
-      const w1 = panel.yTop <= panel.yBot ? panel.wTop : panel.wBot;
-      const w2 = panel.yTop <= panel.yBot ? panel.wBot : panel.wTop;
+      if (h <= 0.8) return;
 
       ctx.save();
 
-      // 3D Perspective Quadrilateral (Trapezoid Panel) - ZERO GAP
+      // 1. Solid Vibrant Slat Color Fill (parallel cylinder width)
       ctx.beginPath();
-      ctx.moveTo(cx - w1 / 2, y1);
-      ctx.lineTo(cx + w1 / 2, y1);
-      ctx.lineTo(cx + w2 / 2, y2);
-      ctx.lineTo(cx - w2 / 2, y2);
-      ctx.closePath();
-
-      // Solid Vibrant Color Fill
+      ctx.rect(drumX, y1, drumWidth, h);
       ctx.fillStyle = color;
       ctx.fill();
 
-      // Seamless Drum Slat Divider Line (Shadow + Highlight)
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+      // 2. Continuous 3D Cylindrical Curvature Shading (Lambertian cosine falloff)
+      const slatGrad = ctx.createLinearGradient(0, panel.yTop, 0, panel.yBot);
+      const shadowTop = (1 - Math.cos(panel.cTop)) * 0.88;
+      const shadowBot = (1 - Math.cos(panel.cBot)) * 0.88;
+      slatGrad.addColorStop(0, `rgba(0, 0, 0, ${Math.min(0.92, shadowTop).toFixed(3)})`);
+      slatGrad.addColorStop(1, `rgba(0, 0, 0, ${Math.min(0.92, shadowBot).toFixed(3)})`);
+      ctx.fillStyle = slatGrad;
+      ctx.fill();
+
+      // 3. Diffuse Specular Sheen across forward-facing slats
+      if (panel.zScale > 0.55) {
+        const glossAlpha = (panel.zScale - 0.55) * 0.20;
+        ctx.fillStyle = `rgba(255, 255, 255, ${glossAlpha.toFixed(3)})`;
+        ctx.fill();
+      }
+
+      // 4. Physical Slat Divider Groove (top shadow recess + bottom highlight line)
+      ctx.beginPath();
+      ctx.moveTo(drumX, y1);
+      ctx.lineTo(drumX + drumWidth, y1);
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.beginPath();
+      ctx.moveTo(drumX, y2);
+      ctx.lineTo(drumX + drumWidth, y2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Realistic 3D Cylindrical Text Foreshortening
+      // 5. Realistic 3D Cylindrical Text Foreshortening
       if (h > 12 && panel.zScale > 0.12) {
         ctx.save();
         ctx.translate(cx, yMid);
         // Squash text height proportional to 3D cylinder angle foreshortening
-        const textScaleY = Math.max(0.35, Math.pow(panel.zScale, 0.85));
+        const textScaleY = Math.max(0.35, Math.pow(panel.zScale, 0.88));
         ctx.scale(1, textScaleY);
 
-        const fontSize = Math.min(36, Math.max(14, Math.floor((h / textScaleY) * 0.44)));
+        const fontSize = Math.min(34, Math.max(14, Math.floor((h / textScaleY) * 0.44)));
         ctx.font = `bold ${fontSize}px Outfit, sans-serif`;
-        ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const maxW = (w1 + w2) / 2 - 24;
+        // High contrast arcade drop shadow
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = '#ffffff';
+        const maxW = drumWidth - 32;
         const maxChars = Math.max(3, Math.floor(maxW / (fontSize * 0.55)));
         const label = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
         ctx.fillText(label, 0, 0);
@@ -749,152 +786,201 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
       ctx.restore();
     });
 
-    // 3D Chrome Side Bezel Rails (Left & Right Drum Edges)
-    if (panels.length > 0) {
-      ctx.save();
-      const leftPts: { x: number; y: number }[] = [];
-      const rightPts: { x: number; y: number }[] = [];
+    // Inner Recess Shadows on left & right drum edges (cylinder set into mechanism)
+    ctx.save();
+    const leftDrumShadow = ctx.createLinearGradient(drumX, 0, drumX + 20, 0);
+    leftDrumShadow.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+    leftDrumShadow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = leftDrumShadow;
+    ctx.fillRect(drumX, 0, 20, canvas.height);
 
-      panels.forEach(p => {
-        leftPts.push({ x: cx - p.wTop / 2, y: p.yTop });
-        leftPts.push({ x: cx - p.wBot / 2, y: p.yBot });
-        rightPts.push({ x: cx + p.wTop / 2, y: p.yTop });
-        rightPts.push({ x: cx + p.wBot / 2, y: p.yBot });
-      });
+    const rightDrumShadow = ctx.createLinearGradient(drumX + drumWidth - 20, 0, drumX + drumWidth, 0);
+    rightDrumShadow.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    rightDrumShadow.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    ctx.fillStyle = rightDrumShadow;
+    ctx.fillRect(drumX + drumWidth - 20, 0, 20, canvas.height);
+    ctx.restore();
 
-      leftPts.sort((a, b) => a.y - b.y);
-      rightPts.sort((a, b) => a.y - b.y);
+    // 3D Brushed Chrome Vertical Side Rails (Left & Right)
+    ctx.save();
+    // Left Rail
+    const leftRailGrad = ctx.createLinearGradient(leftRailX, 0, leftRailX + railWidth, 0);
+    leftRailGrad.addColorStop(0, '#151916');
+    leftRailGrad.addColorStop(0.2, '#4a524c');
+    leftRailGrad.addColorStop(0.5, '#d0d8d2');
+    leftRailGrad.addColorStop(0.7, '#ffffff');
+    leftRailGrad.addColorStop(0.85, '#6a736c');
+    leftRailGrad.addColorStop(1, '#151916');
+    ctx.fillStyle = leftRailGrad;
+    ctx.fillRect(leftRailX, 0, railWidth, canvas.height);
 
-      // Render Left 3D Metallic Rail
-      ctx.beginPath();
-      if (leftPts.length > 0) {
-        ctx.moveTo(leftPts[0].x, leftPts[0].y);
-        for (let i = 1; i < leftPts.length; i++) {
-          ctx.lineTo(leftPts[i].x, leftPts[i].y);
-        }
-      }
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+    // Right Rail
+    const rightRailGrad = ctx.createLinearGradient(rightRailX, 0, rightRailX + railWidth, 0);
+    rightRailGrad.addColorStop(0, '#151916');
+    rightRailGrad.addColorStop(0.15, '#6a736c');
+    rightRailGrad.addColorStop(0.3, '#ffffff');
+    rightRailGrad.addColorStop(0.5, '#d0d8d2');
+    rightRailGrad.addColorStop(0.8, '#4a524c');
+    rightRailGrad.addColorStop(1, '#151916');
+    ctx.fillStyle = rightRailGrad;
+    ctx.fillRect(rightRailX, 0, railWidth, canvas.height);
 
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+    // Rail Outer & Inner Edge Lines
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(leftRailX, 0); ctx.lineTo(leftRailX, canvas.height);
+    ctx.moveTo(rightRailX + railWidth, 0); ctx.lineTo(rightRailX + railWidth, canvas.height);
+    ctx.stroke();
 
-      // Render Right 3D Metallic Rail
-      ctx.beginPath();
-      if (rightPts.length > 0) {
-        ctx.moveTo(rightPts[0].x, rightPts[0].y);
-        for (let i = 1; i < rightPts.length; i++) {
-          ctx.lineTo(rightPts[i].x, rightPts[i].y);
-        }
-      }
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(leftRailX + railWidth * 0.7, 0); ctx.lineTo(leftRailX + railWidth * 0.7, canvas.height);
+    ctx.moveTo(rightRailX + railWidth * 0.3, 0); ctx.lineTo(rightRailX + railWidth * 0.3, canvas.height);
+    ctx.stroke();
+    ctx.restore();
 
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      ctx.restore();
-    }
-
-    // Draw Timezone Arcade Golden Pointer & Center Target Frame
-    this.drawArcadeTargetOverlay(ctx, cx, cy, canvas.width);
-
-    // Top and Bottom 3D Cylinder Depth Vignette Fades
-    const vignetteH = canvas.height * 0.18;
+    // Top and Bottom Deep Cabinet Interior Horizon Vignette
+    const vignetteH = canvas.height * 0.22;
     const topVignette = ctx.createLinearGradient(0, 0, 0, vignetteH);
-    topVignette.addColorStop(0, 'rgba(4,6,4,0.98)');
-    topVignette.addColorStop(0.7, 'rgba(4,6,4,0.6)');
-    topVignette.addColorStop(1, 'rgba(4,6,4,0)');
+    topVignette.addColorStop(0, 'rgba(2,4,2,1.0)');
+    topVignette.addColorStop(0.45, 'rgba(2,4,2,0.85)');
+    topVignette.addColorStop(0.8, 'rgba(2,4,2,0.3)');
+    topVignette.addColorStop(1, 'rgba(2,4,2,0)');
     ctx.fillStyle = topVignette;
     ctx.fillRect(0, 0, canvas.width, vignetteH);
 
     const botVignette = ctx.createLinearGradient(0, canvas.height - vignetteH, 0, canvas.height);
-    botVignette.addColorStop(0, 'rgba(4,6,4,0)');
-    botVignette.addColorStop(0.3, 'rgba(4,6,4,0.6)');
-    botVignette.addColorStop(1, 'rgba(4,6,4,0.98)');
+    botVignette.addColorStop(0, 'rgba(2,4,2,0)');
+    botVignette.addColorStop(0.2, 'rgba(2,4,2,0.3)');
+    botVignette.addColorStop(0.55, 'rgba(2,4,2,0.85)');
+    botVignette.addColorStop(1, 'rgba(2,4,2,1.0)');
     ctx.fillStyle = botVignette;
     ctx.fillRect(0, canvas.height - vignetteH, canvas.width, vignetteH);
 
-    // Glass Cabinet Curved Lens Reflection Overlay
+    // Golden Target Selection Frame with Bevel & Glow + Pointers
+    const frameWidth = drumWidth + railWidth * 2 + 16;
+    this.drawArcadeTargetOverlay(ctx, cx, cy, frameWidth);
+
+    // Authentic Glass Cabinet Front Reflection Overlays
     ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(cx, 40, canvas.width * 0.7, 70, 0, 0, Math.PI);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-    ctx.fill();
+    // 1. Diagonal Specular Light Streak across glass pane
+    const glassGrad = ctx.createLinearGradient(cx - canvas.width * 0.45, 0, cx + canvas.width * 0.45, canvas.height);
+    glassGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    glassGrad.addColorStop(0.32, 'rgba(255, 255, 255, 0)');
+    glassGrad.addColorStop(0.42, 'rgba(255, 255, 255, 0.05)');
+    glassGrad.addColorStop(0.49, 'rgba(255, 255, 255, 0.12)');
+    glassGrad.addColorStop(0.54, 'rgba(255, 255, 255, 0.04)');
+    glassGrad.addColorStop(0.66, 'rgba(255, 255, 255, 0)');
+    glassGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = glassGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 2. Overhead Ambient Light Glare on upper glass
+    const overheadGlare = ctx.createLinearGradient(0, 0, 0, 85);
+    overheadGlare.addColorStop(0, 'rgba(255, 255, 255, 0.10)');
+    overheadGlare.addColorStop(0.5, 'rgba(255, 255, 255, 0.03)');
+    overheadGlare.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = overheadGlare;
+    ctx.fillRect(0, 0, canvas.width, 85);
+
+    // 3. Subtle Glass Perimeter Bezel Highlight
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    this.roundRect(ctx, 1, 1, canvas.width - 2, canvas.height - 2, 20);
+    ctx.stroke();
     ctx.restore();
   }
 
-  private drawArcadeTargetOverlay(ctx: CanvasRenderingContext2D, cx: number, cy: number, width: number): void {
+  private drawArcadeTargetOverlay(ctx: CanvasRenderingContext2D, cx: number, cy: number, frameWidth: number): void {
     const sliceAngle = (Math.PI * 2) / this.DRUM_SLOTS;
     const radius = cy * 0.88;
     const centerSlotHeight = Math.abs(radius * Math.sin(sliceAngle / 2) * 2);
-    const frameWidth = width * 0.88;
     const x = cx - frameWidth / 2;
     const y = cy - centerSlotHeight / 2;
 
     ctx.save();
 
-    // Golden Target Selection Frame with Bevel & Glow
-    ctx.strokeStyle = '#ffe033';
+    // 1. Golden Target Selection Frame with Polished Bevel & Warm Glow
+    const goldBevelGrad = ctx.createLinearGradient(x, y, x + frameWidth, y + centerSlotHeight);
+    goldBevelGrad.addColorStop(0, '#fff9c4');
+    goldBevelGrad.addColorStop(0.25, '#ffd54f');
+    goldBevelGrad.addColorStop(0.5, '#ffb300');
+    goldBevelGrad.addColorStop(0.75, '#ff8f00');
+    goldBevelGrad.addColorStop(1, '#ffe082');
+
+    ctx.strokeStyle = goldBevelGrad;
     ctx.lineWidth = 4.5;
-    ctx.shadowColor = 'rgba(255, 224, 51, 0.75)';
-    ctx.shadowBlur = 16;
+    ctx.shadowColor = 'rgba(255, 215, 0, 0.75)';
+    ctx.shadowBlur = 18;
     this.roundRect(ctx, x, y, frameWidth, centerSlotHeight, 8);
     ctx.stroke();
 
-    // Inner White Accent Line
-    ctx.strokeStyle = '#ead5d5ff';
-    ctx.lineWidth = 2.5;
+    // 2. Inner White-Gold Accent Line
+    ctx.strokeStyle = 'rgba(255, 255, 240, 0.75)';
+    ctx.lineWidth = 1.8;
     ctx.shadowBlur = 0;
-    this.roundRect(ctx, x + 2, y + 2, frameWidth - 4, centerSlotHeight - 4, 6);
+    this.roundRect(ctx, x + 2.5, y + 2.5, frameWidth - 5, centerSlotHeight - 5, 6);
     ctx.stroke();
 
-    // Center Slot Glass Tint Highlight
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    // 3. Center Slot Glass Tint Highlight
+    const glassTint = ctx.createLinearGradient(0, y, 0, y + centerSlotHeight);
+    glassTint.addColorStop(0, 'rgba(255, 245, 180, 0.12)');
+    glassTint.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
+    glassTint.addColorStop(1, 'rgba(255, 245, 180, 0.10)');
+    ctx.fillStyle = glassTint;
     this.roundRect(ctx, x, y, frameWidth, centerSlotHeight, 8);
     ctx.fill();
 
-    // Large 3D Arcade Golden Triangular Selection Pointers (Left & Right)
-    const arrowSize = 30;
+    // 4. Large 3D Arcade Golden Triangular Selection Pointers (Left & Right)
+    const arrowHeight = 28;
+    const arrowWidth = 22;
 
     // Right Pointer (Golden 3D Metallic Triangle pointing left)
-    const rightGrad = ctx.createLinearGradient(x + frameWidth + 2, cy - arrowSize, x + frameWidth + arrowSize + 6, cy + arrowSize);
-    rightGrad.addColorStop(0, '#fff5a3');
-    rightGrad.addColorStop(0.5, '#ffcc00');
-    rightGrad.addColorStop(1, '#b88600');
+    const rightGrad = ctx.createLinearGradient(x + frameWidth + 4, y, x + frameWidth + 4 + arrowWidth, y + centerSlotHeight);
+    rightGrad.addColorStop(0, '#fff9c4');
+    rightGrad.addColorStop(0.3, '#ffca28');
+    rightGrad.addColorStop(0.7, '#ff8f00');
+    rightGrad.addColorStop(1, '#b86000');
 
-    ctx.fillStyle = rightGrad;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
+    ctx.save();
     ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
     ctx.shadowBlur = 8;
+    ctx.fillStyle = rightGrad;
+    ctx.strokeStyle = '#fffde7';
+    ctx.lineWidth = 2;
 
     ctx.beginPath();
-    ctx.moveTo(x + frameWidth + arrowSize + 6, cy - arrowSize);
+    ctx.moveTo(x + frameWidth + arrowWidth + 4, cy - arrowHeight / 2);
     ctx.lineTo(x + frameWidth + 2, cy);
-    ctx.lineTo(x + frameWidth + arrowSize + 6, cy + arrowSize);
+    ctx.lineTo(x + frameWidth + arrowWidth + 4, cy + arrowHeight / 2);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
 
     // Left Pointer (Golden 3D Metallic Triangle pointing right)
-    const leftGrad = ctx.createLinearGradient(x - arrowSize - 6, cy - arrowSize, x - 2, cy + arrowSize);
-    leftGrad.addColorStop(0, '#fff5a3');
-    leftGrad.addColorStop(0.5, '#ffcc00');
-    leftGrad.addColorStop(1, '#b88600');
+    const leftGrad = ctx.createLinearGradient(x - arrowWidth - 4, y, x - 2, y + centerSlotHeight);
+    leftGrad.addColorStop(0, '#fff9c4');
+    leftGrad.addColorStop(0.3, '#ffca28');
+    leftGrad.addColorStop(0.7, '#ff8f00');
+    leftGrad.addColorStop(1, '#b86000');
 
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+    ctx.shadowBlur = 8;
     ctx.fillStyle = leftGrad;
+    ctx.strokeStyle = '#fffde7';
+    ctx.lineWidth = 2;
+
     ctx.beginPath();
-    ctx.moveTo(x - arrowSize - 6, cy - arrowSize);
+    ctx.moveTo(x - arrowWidth - 4, cy - arrowHeight / 2);
     ctx.lineTo(x - 2, cy);
-    ctx.lineTo(x - arrowSize - 6, cy + arrowSize);
+    ctx.lineTo(x - arrowWidth - 4, cy + arrowHeight / 2);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
 
     ctx.restore();
   }

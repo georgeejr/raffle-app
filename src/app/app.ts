@@ -15,7 +15,7 @@ import { WinnerService } from './core/services/winner.service';
       <div class="loading-screen">
         <div class="loading-content">
           <img src="logo.png" alt="St. Paul School Logo" class="loading-logo" />
-          <h2 class="loading-title">St. Paul School of Sta. Maria, Inc.</h2>
+          <h2 class="loading-title">St. Paul School of Santa Maria</h2>
           <p class="loading-sub">Raffle System — Loading...</p>
           <div class="loading-bar">
             <div class="loading-fill"></div>
@@ -296,11 +296,18 @@ import { WinnerService } from './core/services/winner.service';
     /* Main Content */
     .main-content {
       flex: 1;
-      overflow: scroll;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       background: #f7f8f7;
+      height: 100%;
+      min-height: 0;
+      min-width: 0;
       position: relative;
+    }
+
+    router-outlet {
+      display: none;
     }
 
     /* Floating Nav Toggle Button when sidebar is collapsed */
@@ -352,5 +359,8 @@ export class AppComponent implements OnInit {
 
   toggleNav(): void {
     this.isNavCollapsed.update(v => !v);
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 260);
   }
 }
