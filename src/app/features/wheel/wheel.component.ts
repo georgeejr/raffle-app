@@ -45,10 +45,10 @@ export interface WheelSegment {
     .barrel-casing {
       position: relative;
       background: #0a0d0a;
-      border-radius: 28px;
+      // border-radius: 28px;
       padding: 12px;
-      border: 3px solid #2d8a3a;
-      box-shadow: 0 16px 40px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.1);
+      // border: 3px solid #2d8a3a;
+      // box-shadow: 0 16px 40px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.1);
       max-width: 100%;
       box-sizing: border-box;
     }
@@ -144,8 +144,8 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     return list[idx];
   }
 
-  @Input() size = 650;
-  @Output() spinRequested = new EventEmitter<void>();
+  @Input() size = 720;
+  @Output() spinRequested = new EventEmitter<'down' | 'up'>();
   @Output() winnerSelected = new EventEmitter<WheelSegment>();
 
   readonly isSpinning = signal(false);
@@ -342,8 +342,9 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     // Check if the release velocity constitutes a flick/fling to spin
     const speed = Math.abs(this.dragVelocity);
     if (speed > 0.42 && !this.isSpinning()) {
-      // Fling to spin like in an arcade!
-      this.spinRequested.emit();
+      // If drag velocity is positive, user dragged downwards -> spin 'down'. Otherwise 'up'.
+      const direction: 'down' | 'up' = this.dragVelocity > 0 ? 'down' : 'up';
+      this.spinRequested.emit(direction);
     } else {
       // Gently snap to the nearest slot
       this.snapToNearestSlot();
@@ -393,7 +394,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
   }
 
   /** Public method to trigger a spin */
-  spin(): void {
+  spin(direction: 'down' | 'up' = 'down'): void {
     if (this.isSpinning() || this.segments.length === 0) return;
 
     const n = this.segments.length;
@@ -411,29 +412,59 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
 
     // Number of slots to advance: between 120 and 150 slots for an extended, suspenseful 8-second spin
     const spinSlots = 120 + Math.floor(Math.random() * 30);
-    const targetSlot = currentSlot + spinSlots;
+    // Downward spin: targetSlot decreases (angle increases, names roll top -> bottom)
+    // Upward spin: targetSlot increases (angle decreases, names roll bottom -> top)
+    const targetSlot = direction === 'down' ? currentSlot - spinSlots : currentSlot + spinSlots;
 
     // Assign the winner to the exact landing slot
     this.reelSlots.set(targetSlot, winner);
 
-    // Populate the passing slots with random participants from segments so names fly by during spin
-    for (let s = currentSlot + 1; s < targetSlot; s++) {
-      if (!this.reelSlots.has(s)) {
-        const randIdx = Math.floor(Math.random() * n);
-        this.reelSlots.set(s, this.segments[randIdx]);
+    // Populate passing slots with random participants from segments so names fly by during spin
+    if (direction === 'down') {
+      for (let s = currentSlot - 1; s > targetSlot; s--) {
+        if (!this.reelSlots.has(s)) {
+          const randIdx = Math.floor(Math.random() * n);
+          this.reelSlots.set(s, this.segments[randIdx]);
+        }
       }
-    }
-    // Also populate subsequent slots so the view stays populated after landing
-    for (let s = targetSlot + 1; s <= targetSlot + 10; s++) {
-      if (!this.reelSlots.has(s)) {
-        const randIdx = Math.floor(Math.random() * n);
-        this.reelSlots.set(s, this.segments[randIdx]);
+      for (let s = targetSlot - 1; s >= targetSlot - 10; s--) {
+        if (!this.reelSlots.has(s)) {
+          const randIdx = Math.floor(Math.random() * n);
+          this.reelSlots.set(s, this.segments[randIdx]);
+        }
+      }
+      for (let s = targetSlot + 1; s <= targetSlot + 10; s++) {
+        if (!this.reelSlots.has(s)) {
+          const randIdx = Math.floor(Math.random() * n);
+          this.reelSlots.set(s, this.segments[randIdx]);
+        }
+      }
+    } else {
+      for (let s = currentSlot + 1; s < targetSlot; s++) {
+        if (!this.reelSlots.has(s)) {
+          const randIdx = Math.floor(Math.random() * n);
+          this.reelSlots.set(s, this.segments[randIdx]);
+        }
+      }
+      for (let s = targetSlot + 1; s <= targetSlot + 10; s++) {
+        if (!this.reelSlots.has(s)) {
+          const randIdx = Math.floor(Math.random() * n);
+          this.reelSlots.set(s, this.segments[randIdx]);
+        }
+      }
+      for (let s = targetSlot - 1; s >= targetSlot - 10; s--) {
+        if (!this.reelSlots.has(s)) {
+          const randIdx = Math.floor(Math.random() * n);
+          this.reelSlots.set(s, this.segments[randIdx]);
+        }
       }
     }
 
-    // Clean up older slots behind to conserve memory
-    for (const key of this.reelSlots.keys()) {
-      if (key < currentSlot - 20) {
+    // Clean up distant slots to conserve memory
+    const minKeep = Math.min(currentSlot, targetSlot) - 20;
+    const maxKeep = Math.max(currentSlot, targetSlot) + 20;
+    for (const key of Array.from(this.reelSlots.keys())) {
+      if (key < minKeep || key > maxKeep) {
         this.reelSlots.delete(key);
       }
     }

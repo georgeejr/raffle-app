@@ -29,7 +29,7 @@ import { ParticipantService } from '../../../core/services/participant.service';
       <div class="card">
         <div class="tabs" style="margin-bottom:20px">
           <button class="tab" [class.active]="inputTab() === 'bulk'" (click)="inputTab.set('bulk')">Bulk Paste</button>
-          <button class="tab" [class.active]="inputTab() === 'single'" (click)="inputTab.set('single')">Add One</button>
+          <!-- <button class="tab" [class.active]="inputTab() === 'single'" (click)="inputTab.set('single')">Add One</button> -->
           <button class="tab" [class.active]="inputTab() === 'import'" (click)="inputTab.set('import')">Import CSV</button>
         </div>
 

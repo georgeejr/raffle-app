@@ -3,14 +3,77 @@ import { DrawHistory, DrawHistoryWithDetails, Participant, Prize } from '../mode
 
 declare const initSqlJs: any;
 
-const DB_KEY = 'stpaul_raffle_db';
+const IDB_NAME = 'stpaul_raffle_idb';
+const IDB_STORE = 'sqlite_store';
+const SERVER_URL = 'http://localhost:3001/api/db';
+const HEALTH_URL = 'http://localhost:3001/api/health';
+
+class IdbHelper {
+  static async get(): Promise<Uint8Array | null> {
+    if (typeof indexedDB === 'undefined') return null;
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(IDB_STORE)) {
+            req.result.createObjectStore(IDB_STORE);
+          }
+        };
+        req.onsuccess = () => {
+          try {
+            const db = req.result;
+            const tx = db.transaction(IDB_STORE, 'readonly');
+            const getReq = tx.objectStore(IDB_STORE).get('database_file');
+            getReq.onsuccess = () => resolve(getReq.result instanceof Uint8Array ? getReq.result : null);
+            getReq.onerror = () => resolve(null);
+          } catch {
+            resolve(null);
+          }
+        };
+        req.onerror = () => resolve(null);
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  static async set(data: Uint8Array): Promise<void> {
+    if (typeof indexedDB === 'undefined') return;
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+          if (!req.result.objectStoreNames.contains(IDB_STORE)) {
+            req.result.createObjectStore(IDB_STORE);
+          }
+        };
+        req.onsuccess = () => {
+          try {
+            const db = req.result;
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            tx.objectStore(IDB_STORE).put(data, 'database_file');
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          } catch {
+            resolve();
+          }
+        };
+        req.onerror = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
+  }
+}
 
 @Injectable({ providedIn: 'root' })
 export class SqliteService {
   private db: any = null;
   private SQL: any = null;
+  private persistTimeout: any = null;
 
   readonly isReady = signal(false);
+  readonly isServerConnected = signal(false);
 
   async initialize(): Promise<void> {
     // Load sql.js from public directory
@@ -22,15 +85,47 @@ export class SqliteService {
       locateFile: () => '/sql-wasm.wasm'
     });
 
-    // Try to load existing DB from localStorage
-    const saved = localStorage.getItem(DB_KEY);
-    if (saved) {
+    let binaryData: Uint8Array | null = null;
+
+    // 1. Try loading from the standalone local SQLite file on disk via the local storage server
+    try {
+      const resp = await fetch(SERVER_URL);
+      if (resp.ok) {
+        const buffer = await resp.arrayBuffer();
+        if (buffer.byteLength > 0) {
+          binaryData = new Uint8Array(buffer);
+          this.isServerConnected.set(true);
+          console.log(`[SqliteService] Loaded ${binaryData.byteLength} bytes from standalone SQLite file on disk`);
+        }
+      }
+    } catch {
+      this.isServerConnected.set(false);
+    }
+
+    // 2. Fallback to browser IndexedDB (unlimited browser storage)
+    if (!binaryData) {
+      binaryData = await IdbHelper.get();
+      if (binaryData) {
+        console.log(`[SqliteService] Loaded ${binaryData.byteLength} bytes from browser IndexedDB`);
+      }
+    }
+
+    // 3. Fallback: check legacy localStorage migration
+    if (!binaryData) {
+      const legacySaved = localStorage.getItem('stpaul_raffle_db');
+      if (legacySaved) {
+        try {
+          binaryData = Uint8Array.from(atob(legacySaved), c => c.charCodeAt(0));
+          console.log('[SqliteService] Migrated data from legacy localStorage');
+        } catch {}
+      }
+    }
+
+    if (binaryData && binaryData.length > 0) {
       try {
-        const uint8 = Uint8Array.from(atob(saved), c => c.charCodeAt(0));
-        this.db = new this.SQL.Database(uint8);
+        this.db = new this.SQL.Database(binaryData);
       } catch (e) {
-        console.warn('[SqliteService] Corrupt DB in storage, starting fresh', e);
-        localStorage.removeItem(DB_KEY);
+        console.warn('[SqliteService] Corrupt binary DB, creating fresh DB', e);
         this.db = new this.SQL.Database();
       }
     } else {
@@ -38,6 +133,7 @@ export class SqliteService {
     }
 
     this.initSchema();
+    this.persist();
     this.isReady.set(true);
     console.log('[SqliteService] Database ready');
   }
@@ -53,7 +149,6 @@ export class SqliteService {
   }
 
   private initSchema(): void {
-    // sql.js requires individual run() calls per statement (no multi-statement support)
     this.db.run(`
       CREATE TABLE IF NOT EXISTS participants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,13 +215,68 @@ export class SqliteService {
     return row?.id ?? 0;
   }
 
-  private persist(): void {
+  persist(): void {
+    if (!this.db) return;
     try {
       const data: Uint8Array = this.db.export();
-      const b64 = btoa(Array.from(data, b => String.fromCharCode(b)).join(''));
-      localStorage.setItem(DB_KEY, b64);
+
+      // 1. Immediately persist to IndexedDB (browser local storage with no quota limits)
+      IdbHelper.set(data);
+
+      // 2. Debounce writing the binary database file onto disk via the local storage server
+      if (this.persistTimeout) clearTimeout(this.persistTimeout);
+      this.persistTimeout = setTimeout(() => {
+        this.saveToServerDisk(data);
+      }, 150);
     } catch (e) {
-      console.warn('[SqliteService] Persist failed (storage quota?)', e);
+      console.warn('[SqliteService] Persist failed:', e);
+    }
+  }
+
+  private async saveToServerDisk(data: Uint8Array): Promise<void> {
+    try {
+      const res = await fetch(SERVER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data as unknown as BodyInit
+      });
+      if (res.ok) {
+        this.isServerConnected.set(true);
+      }
+    } catch {
+      this.isServerConnected.set(false);
+    }
+  }
+
+  /** Download a full backup of the standalone SQLite database file to user's machine */
+  downloadBackup(): void {
+    if (!this.db) return;
+    const data: Uint8Array = this.db.export();
+    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/x-sqlite3' });
+    const a = document.createElement('a');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    a.href = URL.createObjectURL(blob);
+    a.download = `stpaul_raffle_backup_${dateStr}.db`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  /** Restore database from a user-uploaded .db or .sqlite backup file */
+  async restoreFromBackup(file: File): Promise<boolean> {
+    try {
+      const buffer = await file.arrayBuffer();
+      const uint8 = new Uint8Array(buffer);
+      const testDb = new this.SQL.Database(uint8);
+      const check = testDb.exec("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('participants', 'prizes', 'draw_history')");
+      if (!check || check.length === 0) {
+        throw new Error('Uploaded file is not a valid St. Paul raffle database backup.');
+      }
+      this.db = testDb;
+      this.persist();
+      return true;
+    } catch (e) {
+      console.error('[SqliteService] Restore failed:', e);
+      throw e;
     }
   }
 

@@ -2,7 +2,10 @@ import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ParticipantsPanelComponent } from './participants-panel/participants-panel.component';
 import { PrizesPanelComponent } from './prizes-panel/prizes-panel.component';
-
+import { SqliteService } from '../../core/db/sqlite.service';
+import { ParticipantService } from '../../core/services/participant.service';
+import { RaffleService } from '../../core/services/raffle.service';
+import { WinnerService } from '../../core/services/winner.service';
 import { AppComponent } from '../../app';
 
 type AdminTab = 'participants' | 'prizes';
@@ -25,7 +28,36 @@ type AdminTab = 'participants' | 'prizes';
           }
           <div>
             <h1>Participants &amp; Prizes</h1>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+              @if (sqlite.isServerConnected()) {
+                <span class="db-status-pill connected" title="Database is safely persisted to stpaul_raffle.db on your local disk">
+                  <span class="pulse-dot"></span>
+                  <span>Standalone SQLite: <strong>stpaul_raffle.db</strong> (Saved on Disk)</span>
+                </span>
+              } @else {
+                <span class="db-status-pill local" title="Database is persisted in browser IndexedDB">
+                  <span class="pulse-dot local"></span>
+                  <span>Database: <strong>IndexedDB (Offline)</strong></span>
+                </span>
+              }
+            </div>
           </div>
+        </div>
+
+        <div class="db-actions">
+          <button class="btn btn-secondary btn-sm" (click)="sqlite.downloadBackup()" title="Download a backup copy of your database file">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>Backup Database (.db)</span>
+          </button>
+          <input #restoreInput type="file" accept=".db,.sqlite" style="display:none" (change)="onRestoreFile($event)">
+          <button class="btn btn-secondary btn-sm" (click)="restoreInput.click()" title="Restore database from a previously backed-up .db file">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span>Restore DB</span>
+          </button>
         </div>
       </div>
 
@@ -56,9 +88,13 @@ type AdminTab = 'participants' | 'prizes';
     .admin-layout { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
     .admin-header {
-      padding: 18px 28px 16px;
+      padding: 14px 28px;
       background: var(--bg-white);
       border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
       flex-shrink: 0;
     }
 
@@ -66,19 +102,50 @@ type AdminTab = 'participants' | 'prizes';
       display: flex;
       align-items: center;
       gap: 14px;
-      // height: 60px;
     }
 
-    .header-logo {
-      width: 44px;
-      height: 44px;
-      object-fit: contain;
+    .db-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .db-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: var(--gray-100);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+
+      &.connected {
+        background: #eaf6ec;
+        color: #1a5c22;
+        border-color: #b5e2bd;
+      }
+      &.local {
+        background: #fdf6e7;
+        color: #855307;
+        border-color: #f2db9e;
+      }
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      border: 1px solid var(--border-green);
+      background: #2d8a3a;
+      flex-shrink: 0;
+
+      &.local {
+        background: #c9952a;
+      }
     }
 
-    h1 { font-size: 20px; color: var(--green-900); }
-    .header-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    h1 { font-size: 18px; color: var(--green-900); }
 
     .admin-tabs-row {
       padding: 0 28px;
@@ -98,5 +165,31 @@ type AdminTab = 'participants' | 'prizes';
 })
 export class AdminComponent {
   activeTab = signal<AdminTab>('participants');
-  constructor(public app: AppComponent) {}
+
+  constructor(
+    public app: AppComponent,
+    public sqlite: SqliteService,
+    private participantSvc: ParticipantService,
+    private raffleSvc: RaffleService,
+    private winnerSvc: WinnerService
+  ) {}
+
+  async onRestoreFile(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    if (confirm(`Restore database from "${file.name}"? This will overwrite the current database.`)) {
+      try {
+        await this.sqlite.restoreFromBackup(file);
+        this.participantSvc.refresh();
+        this.raffleSvc.refresh();
+        this.winnerSvc.refresh();
+        alert('Database successfully restored!');
+      } catch (err: any) {
+        alert('Failed to restore database: ' + (err?.message || err));
+      }
+    }
+    input.value = '';
+  }
 }
+

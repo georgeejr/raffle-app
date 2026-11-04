@@ -33,7 +33,7 @@ interface WinnerDisplay {
               <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
               </svg>
-              <span>Nav</span>
+              <!-- <span>Nav</span> -->
             </button>
           }
            @if (app.isNavCollapsed() || isFullscreen()) {
@@ -41,7 +41,7 @@ interface WinnerDisplay {
               <img src="logo.png" alt="St. Paul Logo" class="topbar-logo" />
             </div>
           }
-          <h1 class="page-title">Raffle Draw</h1>
+          <h1 class="page-title">SPSSM Family Day 2026 - Raffle Draw</h1>
           <div class="stat-row">
             <span class="stat-chip eligible">{{ eligibleCount() }} remaining participants</span>
             <span class="stat-chip winners">{{ totalWinners() }} drawn</span>
@@ -65,8 +65,8 @@ interface WinnerDisplay {
           <app-wheel
             #wheel
             [segments]="wheelSegments()"
-            [size]="650"
-            (spinRequested)="triggerSpin()"
+            [size]="720"
+            (spinRequested)="triggerSpin($event)"
             (winnerSelected)="onWinnerSelected($event)">
           </app-wheel>
 
@@ -88,14 +88,14 @@ interface WinnerDisplay {
               {{ spinLabel() }}
             </button>
 
-            @if (activePrize() && activePrize()!.quantity_remaining > 1) {
+            <!-- @if (activePrize() && activePrize()!.quantity_remaining > 1) {
               <div class="batch-progress">
                 <span class="batch-label">{{ activePrize()!.quantity_remaining }} remaining</span>
                 <div class="progress-bar" style="width:200px">
                   <div class="progress-fill" [style.width.%]="winProgress()"></div>
                 </div>
               </div>
-            }
+            } -->
 
             <p class="spin-hint">Press <kbd>Space</kbd> or <span style="font-weight:600">drag wheel</span> to spin &nbsp;·&nbsp; <kbd>F</kbd> for fullscreen</p>
           </div>
@@ -172,42 +172,83 @@ interface WinnerDisplay {
             </div>
 
             <div class="winner-inner">
-              <div class="winner-header">
-                <span class="badge" [ngClass]="activePrize()?.tier === 'Major' ? 'badge-major' : 'badge-minor'">
-                  {{ activePrize()?.tier ? activePrize()!.tier + ' Prize' : 'Raffle Prize' }}
-                </span>
-                <h2 class="winner-prize-name">{{ activePrize()?.title || 'Raffle Draw Winner' }}</h2>
-                @if (activePrize()?.description) {
-                  <p class="winner-prize-desc">{{ activePrize()!.description }}</p>
-                }
+              <!-- Celebration Header -->
+              <div class="winner-celebration-head">
+                <div class="congrats-tag">
+                  <span>CONGRATULATIONS!</span>
+                </div>
+                <p class="celebration-subtitle">We have a lucky raffle winner!</p>
               </div>
 
-              @if (activePrize()?.image_data) {
-                <img [src]="activePrize()!.image_data" class="winner-prize-img" alt="Prize Image" />
-              }
-
-              <div class="winners-list">
-                @for (w of currentBatchWinners(); track w.participantId; let i = $index) {
-                  <div class="winner-row" [style.animation-delay]="(i * 0.1) + 's'">
-                    @if (currentBatchWinners().length > 1) {
-                      <span class="winner-rank">{{ i + 1 }}</span>
-                    }
-                    <span class="winner-name">{{ w.name }}</span>
+              <!-- Winner Name Display (Clean typography, no chunky green box) -->
+              <div class="winner-hero">
+                @if (currentBatchWinners().length === 1) {
+                  <div class="single-winner-display">
+                    <!-- <span class="winner-label">Raffle Winner</span> -->
+                    <h1 class="winner-name-text">{{ currentBatchWinners()[0].name }}</h1>
+                    <div class="winner-divider"></div>
+                  </div>
+                } @else {
+                  <div class="batch-winners-container">
+                    <span class="winner-label">{{ currentBatchWinners().length }} Winners Drawn</span>
+                    <div class="batch-winners-grid">
+                      @for (w of currentBatchWinners(); track (w.participantId ? w.participantId + '-' + i : i); let i = $index) {
+                        <div class="batch-winner-card">
+                          <span class="batch-rank">{{ i + 1 }}</span>
+                          <span class="batch-name">{{ w.name }}</span>
+                        </div>
+                      }
+                    </div>
                   </div>
                 }
               </div>
 
+              <!-- Prize Award Details Card -->
+              <div class="prize-award-card">
+                @if (activePrize()?.image_data) {
+                  <div class="prize-award-img-wrap">
+                    <img [src]="activePrize()!.image_data" class="prize-award-img" alt="Prize" />
+                  </div>
+                }
+                <div class="prize-award-info">
+                  <span class="badge prize-award-badge" [ngClass]="activePrize()?.tier === 'Major' ? 'badge-major' : 'badge-minor'">
+                    {{ activePrize()?.tier ? activePrize()!.tier + ' Prize' : 'Raffle Prize' }}
+                  </span>
+                  <div class="prize-award-title">{{ activePrize()?.title || 'Raffle Draw Prize' }}</div>
+                  @if (activePrize()?.description) {
+                    <div class="prize-award-desc">{{ activePrize()!.description }}</div>
+                  }
+                </div>
+              </div>
+
+              <!-- Claim Instructions Callout -->
+              <div class="claim-instruction-box">
+                <div class="claim-instruction-icon">
+                  <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                  </svg>
+                </div>
+                <div class="claim-instruction-text">
+                  <span class="claim-heading">Prize Claiming:</span>
+                  Please proceed to the <strong>PTO representative</strong> to verify and claim your prize!
+                </div>
+              </div>
+
+              <!-- Actions -->
               <div class="winner-actions">
                 @if (needsMoreSpins()) {
-                  <button class="btn btn-primary" (click)="continueSpinning()">
-                    Spin Again ({{ remainingSpins() }} left)
+                  <button class="btn btn-primary btn-next-spin" (click)="continueSpinning()">
+                    <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <span>Spin Again ({{ remainingSpins() }} left)</span>
                   </button>
                 } @else {
-                  <button class="btn btn-primary" (click)="dismissModal()">
-                    Continue
+                  <button class="btn btn-primary" (click)="dismissModal()" style="min-width:110px">
+                    Done
                   </button>
                 }
-                <button class="btn btn-secondary" (click)="dismissModal()">Dismiss</button>
+                <button class="btn btn-secondary" (click)="dismissModal()" style="min-width:90px">Dismiss</button>
               </div>
             </div>
           </div>
@@ -349,10 +390,10 @@ interface WinnerDisplay {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 14px 48px;
+      padding: 12px 28px;
       background: var(--green);
       color: white;
-      border: 2px solid var(--green-800);
+      border: 1px solid var(--green-800);
       border-radius: var(--radius);
       font-family: 'Outfit', sans-serif;
       font-weight: 700;
@@ -457,19 +498,20 @@ interface WinnerDisplay {
     .prize-body { padding: 14px 16px; }
     .prize-title {
       font-size: 18px;
+      text-align: center;
       font-family: 'Outfit', sans-serif;
       color: var(--green-900);
       margin-bottom: 6px;
     }
     .prize-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
-    .prize-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .prize-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
     .chip {
       background: var(--green-100);
       color: var(--green-900);
-      border: 1px solid var(--border-green);
+      // border: 1px solid var(--border-green);
       border-radius: 4px;
       padding: 2px 8px;
-      font-size: 11px;
+      font-size: 18px;
       font-weight: 600;
       font-family: 'Outfit', sans-serif;
     }
@@ -493,6 +535,7 @@ interface WinnerDisplay {
       margin-bottom: 10px;
     }
     .queue-list { display: flex; flex-direction: column; gap: 6px; }
+    .queue-list .badge {border: 0;}
     .queue-row {
       display: flex;
       align-items: center;
@@ -505,9 +548,9 @@ interface WinnerDisplay {
       transition: background 0.15s;
       &:hover { background: var(--green-50); border-color: var(--border-green); }
     }
-    .queue-name { flex: 1; font-size: 13px; font-weight: 500; }
+    .queue-name { flex: 1; font-size: 15px; font-weight: 500; }
     .queue-qty  { font-size: 11px; color: var(--text-muted); font-weight: 600; }
-
+    
     /* Winner Modal */
     .winner-backdrop {
       position: fixed;
@@ -518,20 +561,22 @@ interface WinnerDisplay {
       justify-content: center;
       z-index: 900;
       animation: fadeIn 0.2s ease;
+      backdrop-filter: blur(2px);
     }
 
     .winner-modal {
       position: relative;
       background: var(--bg-white);
-      border: 3px solid var(--green);
-      border-radius: var(--radius-lg);
-      width: 92%;
-      // max-width: 680px;
+      border: 1px solid var(--border);
+      border-top: 6px solid var(--green);
+      border-radius: 16px;
+      width: 82%;
+      max-width: 1240px;
       max-height: 90vh;
       overflow-y: auto;
       animation: winner-pop 0.35s ease both;
       overflow: hidden;
-      box-shadow: 0 12px 36px rgba(0,0,0,0.15);
+      box-shadow: 0 20px 48px rgba(0,0,0,0.22);
     }
 
     .winner-confetti-bg {
@@ -551,93 +596,239 @@ interface WinnerDisplay {
     .winner-inner {
       position: relative;
       z-index: 1;
-      padding: 36px 40px;
+      padding: 30px 28px 24px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 24px;
+      gap: 16px;
       text-align: center;
     }
 
-    .winner-header {
+    .winner-celebration-head {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 4px;
     }
 
-    .winner-prize-name {
-      font-size: 50px;
+    .congrats-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #925f0a;
+      font-size: 32px;
       font-weight: 800;
-      color: var(--green-900);
+      letter-spacing: 1.5px;
       font-family: 'Outfit', sans-serif;
     }
 
-    .winner-prize-desc {
-      font-size: 15px;
-      color: var(--gray-700);
-      margin-top: 2px;
-      max-width: 480px;
-      line-height: 1.4;
+    .celebration-subtitle {
+      font-size: 24px;
+      color: var(--text-secondary);
+      margin: 2px 0 0;
+      font-weight: 500;
     }
 
-    .winner-prize-img {
-      // width: 500px;
-      // height: 140px;
-      max-height: 300px;
-      object-fit: cover;
-      border-radius: var(--radius);
-      border: 2px solid var(--border-green);
-    }
-
-    .winners-list {
+    .winner-hero {
       width: 100%;
+      text-align: center;
+      padding: 4px 0;
+    }
+
+    .single-winner-display {
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      align-items: center;
     }
 
-    .winner-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      background: #e8f5e9;
-      border: 2px solid #a5d6a7;
-      border-radius: 12px;
-      padding: 18px 24px;
+    .winner-label {
+      font-size: 18px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 700;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .winner-name-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 95px;
+      font-weight: 800;
+      color: var(--green-900);
+      line-height: 1.15;
+      margin: 0;
+      letter-spacing: -0.5px;
+      word-break: break-word;
       animation: winner-pop 0.4s ease both;
     }
 
-    .winner-rank {
-      width: 36px;
-      height: 36px;
-      background: #1a4d22;
-      color: white;
+    .winner-divider {
+      width: 50px;
+      height: 3px;
+      background: linear-gradient(90deg, #c9952a, #2d8a3a);
+      margin: 10px auto 0;
+      border-radius: 2px;
+    }
+
+    .batch-winners-container {
+      width: 100%;
+    }
+
+    .batch-winners-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 8px;
+      padding: 2px;
+    }
+
+    .batch-winner-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--gray-50);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      text-align: left;
+    }
+
+    .batch-rank {
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
+      background: var(--green);
+      color: white;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 16px;
-      font-weight: 800;
-      font-family: 'Outfit', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
       flex-shrink: 0;
     }
 
-    .winner-name {
-      font-family: 'Outfit', sans-serif;
-      font-size: 80px;
-      font-weight: 800;
-      color: #1a4d22;
+    .batch-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--green-900);
       flex: 1;
-      text-align: center;
-      letter-spacing: 0.5px;
+    }
+
+    .prize-award-card {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--gray-50);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      text-align: left;
+    }
+
+    .prize-award-img-wrap {
+      width: 200px;
+      // height: 168px;
+      flex-shrink: 0;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 4px;
+    }
+
+    .prize-award-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .prize-award-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .prize-award-badge {
+      display: inline-block;
+      margin-bottom: 4px;
+     background: transparent;
+     border: 0;
+     font-size: 16px;
+    }
+
+    .prize-award-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 46px;
+      font-weight: 700;
+      color: var(--green-900);
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .prize-award-desc {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .claim-instruction-box {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      // background: #fbfbf4;
+      // border: 1px dashed #d6cca4;
+      border-radius: 8px;
+      padding: 10px 14px;
+      text-align: left;
+    }
+
+    .claim-instruction-icon {
+      color: #925f0a;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+    }
+
+    .claim-instruction-text {
+      font-size: 18px;
+      color: #4f4732;
+      line-height: 1.4;
+    }
+
+    .claim-heading {
+      font-weight: 700;
+      color: #744b05;
+      margin-right: 4px;
     }
 
     .winner-actions {
       display: flex;
       gap: 10px;
       justify-content: center;
-      flex-wrap: wrap;
+      align-items: center;
+      width: 100%;
+      margin-top: 2px;
+    }
+
+    .btn-next-spin {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 20px;
+      font-weight: 600;
     }
   `]
 })
@@ -721,7 +912,7 @@ export class RaffleViewComponent implements OnInit {
     if (e.key === 'Escape') this.dismissModal();
   }
 
-  triggerSpin(): void {
+  triggerSpin(direction: 'down' | 'up' = 'down'): void {
     if (!this.canSpin()) return;
     const prize = this.activePrize()!;
     if (prize.draw_mode === 'bulk' || this._drawMode() === 'bulk') {
@@ -730,7 +921,7 @@ export class RaffleViewComponent implements OnInit {
     this._isSpinning.set(true);
     this._spinBatchId = crypto.randomUUID();
     this._batchSize = prize.quantity_total;
-    this.wheelRef.spin();
+    this.wheelRef.spin(direction);
   }
 
   onWinnerSelected(segment: WheelSegment): void {
@@ -764,7 +955,7 @@ export class RaffleViewComponent implements OnInit {
 
   continueSpinning(): void {
     this._showWinnerModal.set(false);
-    setTimeout(() => { this._isSpinning.set(true); this.wheelRef.spin(); }, 400);
+    setTimeout(() => { this._isSpinning.set(true); this.wheelRef.spin('down'); }, 400);
   }
 
   dismissModal(): void {

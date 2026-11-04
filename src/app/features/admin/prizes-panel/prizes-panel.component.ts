@@ -48,9 +48,28 @@ const DEFAULT_FORM: PrizeForm = {
         <div class="prize-list">
           @for (prize of prizes(); track prize.id; let i = $index) {
             <div class="prize-row card" [class.major-row]="prize.tier === 'Major'"
-              [class.completed-row]="prize.status === 'completed'">
+              [class.completed-row]="prize.status === 'completed'"
+              [class.is-dragging]="draggedIndex() === i"
+              [class.drag-over]="dragOverIndex() === i && draggedIndex() !== i"
+              draggable="true"
+              (dragstart)="onDragStart($event, i)"
+              (dragover)="onDragOver($event, i)"
+              (dragleave)="onDragLeave(i)"
+              (drop)="onDrop($event, i)"
+              (dragend)="onDragEnd()">
 
               <div class="prize-row-left">
+                <div class="drag-handle" title="Drag to reorder sequence">
+                  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <circle cx="9" cy="6" r="1.5"/>
+                    <circle cx="9" cy="12" r="1.5"/>
+                    <circle cx="9" cy="18" r="1.5"/>
+                    <circle cx="15" cy="6" r="1.5"/>
+                    <circle cx="15" cy="12" r="1.5"/>
+                    <circle cx="15" cy="18" r="1.5"/>
+                  </svg>
+                </div>
+
                 <span class="order-num">{{ i + 1 }}</span>
 
                 @if (prize.image_data) {
@@ -77,17 +96,13 @@ const DEFAULT_FORM: PrizeForm = {
                 </div>
               </div>
 
-              <div class="prize-row-actions">
+              <div class="prize-row-actions" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
                 <button class="btn btn-primary btn-sm" [disabled]="prize.status === 'completed'"
                   (click)="setActivePrize(prize)">
                   {{ prize.status === 'active' ? 'Active' : 'Activate' }}
                 </button>
                 <button class="btn btn-secondary btn-sm" [disabled]="prize.status === 'completed'" (click)="openModal(prize)">Edit</button>
                 <button class="btn btn-danger btn-sm" (click)="deletePrize(prize.id)">Delete</button>
-                <div class="reorder-btns">
-                  <button class="btn btn-ghost btn-sm" (click)="moveUp(i)" [disabled]="i === 0">Up</button>
-                  <button class="btn btn-ghost btn-sm" (click)="moveDown(i)" [disabled]="i === prizes().length - 1">Down</button>
-                </div>
               </div>
             </div>
           }
@@ -178,12 +193,53 @@ const DEFAULT_FORM: PrizeForm = {
 
     .prize-list { display: flex; flex-direction: column; gap: 10px; }
 
+    .drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      cursor: grab;
+      padding: 4px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+
+      &:hover {
+        color: var(--green-900);
+        background: var(--gray-100);
+      }
+      &:active {
+        cursor: grabbing;
+      }
+    }
+
     .prize-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      padding: 14px 16px;
+      padding: 12px 16px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
+      cursor: grab;
+
+      &:active {
+        cursor: grabbing;
+      }
+
+      &.is-dragging {
+        opacity: 0.35;
+        border: 2px dashed var(--green);
+        background: var(--green-50);
+        transform: scale(0.99);
+      }
+
+      &.drag-over {
+        border-color: var(--green);
+        background: #f1f8f2;
+        box-shadow: 0 0 0 2px var(--green);
+        transform: translateY(-2px);
+      }
+
       &.major-row { border-color: #f0cc70; background: #fffdf5; }
       &.completed-row { opacity: 0.55; }
     }
@@ -291,10 +347,57 @@ export class PrizesPanelComponent implements OnInit {
   showModal = signal(false);
   editingId = signal<number | null>(null);
 
+  readonly draggedIndex = signal<number | null>(null);
+  readonly dragOverIndex = signal<number | null>(null);
+
   readonly prizes = computed(() => this.raffleSvc.prizes());
 
   constructor(private raffleSvc: RaffleService) { }
   ngOnInit(): void { this.raffleSvc.refresh(); }
+
+  onDragStart(event: DragEvent, index: number): void {
+    this.draggedIndex.set(index);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', index.toString());
+    }
+  }
+
+  onDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    if (this.draggedIndex() === null) return;
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    this.dragOverIndex.set(index);
+  }
+
+  onDragLeave(index: number): void {
+    if (this.dragOverIndex() === index) {
+      this.dragOverIndex.set(null);
+    }
+  }
+
+  onDrop(event: DragEvent, targetIndex: number): void {
+    event.preventDefault();
+    const fromIndex = this.draggedIndex();
+    if (fromIndex === null || fromIndex === targetIndex) {
+      this.onDragEnd();
+      return;
+    }
+
+    const list = [...this.prizes()];
+    const [moved] = list.splice(fromIndex, 1);
+    list.splice(targetIndex, 0, moved);
+
+    this.onDragEnd();
+    this.raffleSvc.reorderPrizes(list);
+  }
+
+  onDragEnd(): void {
+    this.draggedIndex.set(null);
+    this.dragOverIndex.set(null);
+  }
 
   openModal(prize?: Prize): void {
     if (prize) {
