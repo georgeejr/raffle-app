@@ -223,11 +223,7 @@ interface WinnerDisplay {
 
               <!-- Claim Instructions Callout -->
               <div class="claim-instruction-box">
-                <div class="claim-instruction-icon">
-                  <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-                  </svg>
-                </div>
+                
                 <div class="claim-instruction-text">
                   <span class="claim-heading">Prize Claiming:</span>
                   Please proceed to the <strong>PTO representative</strong> to verify and claim your prize!
@@ -353,6 +349,7 @@ interface WinnerDisplay {
       background: var(--bg-base);
       min-width: 0;
       overflow-y: auto;
+      // background-image: url("/bg-theme.jpg");
     }
 
     /* Spin Controls */
@@ -655,7 +652,7 @@ interface WinnerDisplay {
       font-family: 'Outfit', sans-serif;
       font-size: 95px;
       font-weight: 800;
-      color: var(--green-900);
+      color: #000;
       line-height: 1.15;
       margin: 0;
       letter-spacing: -0.5px;

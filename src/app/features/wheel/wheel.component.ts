@@ -797,8 +797,8 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     ctx.stroke();
 
     // Inner White Accent Line
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#000000ff';
+    ctx.lineWidth = 2.5;
     ctx.shadowBlur = 0;
     this.roundRect(ctx, x + 2, y + 2, frameWidth - 4, centerSlotHeight - 4, 6);
     ctx.stroke();
@@ -809,7 +809,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     ctx.fill();
 
     // Large 3D Arcade Golden Triangular Selection Pointers (Left & Right)
-    const arrowSize = 24;
+    const arrowSize = 30;
 
     // Right Pointer (Golden 3D Metallic Triangle pointing left)
     const rightGrad = ctx.createLinearGradient(x + frameWidth + 2, cy - arrowSize, x + frameWidth + arrowSize + 6, cy + arrowSize);

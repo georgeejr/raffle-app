@@ -139,7 +139,7 @@ import { WinnerService } from './core/services/winner.service';
     .sidebar {
       width: 230px;
       flex-shrink: 0;
-      background: #1a4d22;
+      background: #217827;
       display: flex;
       flex-direction: column;
       padding: 0;
