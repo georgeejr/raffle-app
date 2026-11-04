@@ -15,10 +15,8 @@ export interface WheelSegment {
   imports: [CommonModule],
   template: `
     <div class="wheel-wrapper">
-      <div class="barrel-casing">
+      <div #barrelCasing class="barrel-casing">
         <canvas #wheelCanvas
-          [width]="size"
-          [height]="size"
           class="wheel-canvas"
           [class.spinning]="isSpinning()"
           [class.draggable]="!isSpinning()"
@@ -33,31 +31,48 @@ export interface WheelSegment {
     </div>
   `,
   styles: [`
+    :host {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+    }
+
     .wheel-wrapper {
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
-      width: fit-content;
-      max-width: 100%;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
     }
 
     .barrel-casing {
       position: relative;
-      background: #0a0d0a;
-      // border-radius: 28px;
-      padding: 12px;
-      // border: 3px solid #2d8a3a;
-      // box-shadow: 0 16px 40px rgba(0,0,0,0.35), inset 0 2px 4px rgba(255,255,255,0.1);
-      max-width: 100%;
+      background: #040604;
+      width: 100%;
+      max-width: 680px;
+      height: 100%;
+      border-radius: 20px;
+      padding: 0;
       box-sizing: border-box;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+      border: 2px solid #1a4d22;
     }
 
     .wheel-canvas {
       display: block;
-      border-radius: 20px;
-      max-width: 100%;
-      height: auto;
+      width: 100%;
+      height: 100%;
       user-select: none;
       -webkit-user-select: none;
       touch-action: none;
@@ -73,6 +88,9 @@ export interface WheelSegment {
 })
 export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('wheelCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('barrelCasing', { static: true }) casingRef!: ElementRef<HTMLDivElement>;
+
+  private resizeObserver: ResizeObserver | null = null;
 
   // Exactly 14 virtual slots around the 360-degree cylinder drum
   // This guarantees exactly 5 to 7 clearly visible names on the front face regardless of total participant count!
@@ -213,7 +231,35 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
 
   ngAfterViewInit(): void {
     this.initCtx();
+    this.setupResizeObserver();
     this.scheduleDraw();
+  }
+
+  private setupResizeObserver(): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    const casing = this.casingRef?.nativeElement;
+    if (!casing) return;
+
+    this.resizeObserver = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 60 && height > 60) {
+          this.updateDimensions(Math.floor(width), Math.floor(height));
+        }
+      }
+    });
+    this.resizeObserver.observe(casing);
+  }
+
+  private updateDimensions(w: number, h: number): void {
+    const canvas = this.canvasRef?.nativeElement;
+    if (!canvas) return;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      this.initCtx();
+      this.drawWheel();
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -239,6 +285,10 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
 
   ngOnDestroy(): void {
     if (this.animFrame) cancelAnimationFrame(this.animFrame);
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
   }
 
   private initCtx(): void {
@@ -615,9 +665,9 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
         const zBot = Math.max(0.05, Math.cos(cBot));
         const zScale = Math.max(0.05, Math.cos(thetaCenter));
 
-        const baseWidth = canvas.width * 0.86;
-        const wTop = baseWidth * (0.62 + 0.38 * zTop);
-        const wBot = baseWidth * (0.62 + 0.38 * zBot);
+        const baseWidth = canvas.width * 0.82;
+        const wTop = baseWidth * (0.64 + 0.36 * zTop);
+        const wBot = baseWidth * (0.64 + 0.36 * zBot);
 
         panels.push({
           slotIndex: j,
@@ -682,7 +732,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
         const textScaleY = Math.max(0.35, Math.pow(panel.zScale, 0.85));
         ctx.scale(1, textScaleY);
 
-        const fontSize = Math.min(32, Math.max(13, Math.floor((h / textScaleY) * 0.48)));
+        const fontSize = Math.min(36, Math.max(14, Math.floor((h / textScaleY) * 0.44)));
         ctx.font = `bold ${fontSize}px Outfit, sans-serif`;
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
@@ -797,7 +847,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     ctx.stroke();
 
     // Inner White Accent Line
-    ctx.strokeStyle = '#000000ff';
+    ctx.strokeStyle = '#ead5d5ff';
     ctx.lineWidth = 2.5;
     ctx.shadowBlur = 0;
     this.roundRect(ctx, x + 2, y + 2, frameWidth - 4, centerSlotHeight - 4, 6);

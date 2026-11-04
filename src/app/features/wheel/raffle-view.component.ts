@@ -62,13 +62,14 @@ interface WinnerDisplay {
 
         <!-- LEFT: Wheel -->
         <div class="wheel-section">
-          <app-wheel
-            #wheel
-            [segments]="wheelSegments()"
-            [size]="720"
-            (spinRequested)="triggerSpin($event)"
-            (winnerSelected)="onWinnerSelected($event)">
-          </app-wheel>
+          <div class="wheel-stage">
+            <app-wheel
+              #wheel
+              [segments]="wheelSegments()"
+              (spinRequested)="triggerSpin($event)"
+              (winnerSelected)="onWinnerSelected($event)">
+            </app-wheel>
+          </div>
 
           <!-- Spin controls -->
           <div class="spin-controls">
@@ -343,13 +344,23 @@ interface WinnerDisplay {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 20px;
-      padding: 16px 20px;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px 14px;
       background: var(--bg-base);
       min-width: 0;
-      overflow-y: auto;
-      // background-image: url("/bg-theme.jpg");
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .wheel-stage {
+      flex: 1;
+      width: 100%;
+      min-height: 360px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
     }
 
     /* Spin Controls */
@@ -357,7 +368,8 @@ interface WinnerDisplay {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 14px;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     .draw-mode-bar {
@@ -500,7 +512,7 @@ interface WinnerDisplay {
       color: var(--green-900);
       margin-bottom: 6px;
     }
-    .prize-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+    .prize-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; text-align: center; }
     .prize-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
     .chip {
       background: var(--green-100);
@@ -568,7 +580,7 @@ interface WinnerDisplay {
       border-top: 6px solid var(--green);
       border-radius: 16px;
       width: 82%;
-      max-width: 1240px;
+      max-width: 1440px;
       max-height: 90vh;
       overflow-y: auto;
       animation: winner-pop 0.35s ease both;
@@ -718,16 +730,17 @@ interface WinnerDisplay {
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
       background: var(--gray-50);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 12px 16px;
       text-align: left;
+     justify-content: center;
     }
 
     .prize-award-img-wrap {
-      width: 200px;
+      height: 300px;
       // height: 168px;
       flex-shrink: 0;
       background: #ffffff;
@@ -803,6 +816,8 @@ interface WinnerDisplay {
       font-size: 18px;
       color: #4f4732;
       line-height: 1.4;
+     text-align: center;
+     width: 100%;
     }
 
     .claim-heading {
