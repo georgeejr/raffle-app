@@ -240,7 +240,7 @@ interface WinnerDisplay {
                 <div class="congrats-tag">
                   <span>CONGRATULATIONS!</span>
                 </div>
-                <p class="celebration-subtitle">We have a lucky raffle winner!</p>
+                <!-- <p class="celebration-subtitle">We have a lucky raffle winner!</p> -->
               </div>
 
               <!-- Prize Award Details Card -->
@@ -410,7 +410,7 @@ interface WinnerDisplay {
                   <div class="option-info">
                     <div class="option-header-row">
                       <span class="option-title">Assign Item to Teachers &amp; Faculty</span>
-                      <span class="pto-badge">Default (PTO Rule)</span>
+                      <!-- <span class="pto-badge">Default (PTO Rule)</span> -->
                     </div>
                     <p class="option-desc">The prize item is allocated directly to school teachers. Do <strong>not</strong> return it to the active pool or redraw.</p>
                   </div>
@@ -1054,8 +1054,8 @@ interface WinnerDisplay {
     }
 
     .prize-award-img-wrap {
-      width: 150px;
-      height: 150px;
+      // width: 150px;
+      height: 300px;
       margin: 0;
       flex-shrink: 0;
       background: #ffffff;
@@ -1088,7 +1088,7 @@ interface WinnerDisplay {
       margin-bottom: 2px;
       background: transparent;
       border: 0;
-      font-size: 13px;
+      font-size: 16px;
       font-weight: 800;
       letter-spacing: 0.8px;
       text-transform: uppercase;
@@ -1098,7 +1098,7 @@ interface WinnerDisplay {
 
     .prize-award-title {
       font-family: 'Outfit', sans-serif;
-      font-size: 42px;
+      font-size: 60px;
       font-weight: 800;
       color: #1b5e20;
       line-height: 1.15;
@@ -1107,7 +1107,7 @@ interface WinnerDisplay {
     }
 
     .prize-award-desc {
-      font-size: 14px;
+      font-size: 18px;
       font-weight: 600;
       color: var(--text-secondary);
       text-transform: uppercase;
