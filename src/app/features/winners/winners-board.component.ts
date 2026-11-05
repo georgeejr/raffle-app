@@ -1,13 +1,17 @@
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
 import { WinnerService } from '../../core/services/winner.service';
+import { RaffleService } from '../../core/services/raffle.service';
+import { DrawHistoryWithDetails } from '../../core/models/models';
 import { AppComponent } from '../../app';
 
 @Component({
   selector: 'app-winners-board',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ConfirmDialogComponent],
   template: `
     <div class="winners-layout">
       <div class="winners-header">
@@ -70,6 +74,9 @@ import { AppComponent } from '../../app';
                     <span class="winner-rank">{{ i + 1 }}</span>
                     <span class="winner-chip-name">{{ w.participant_name }}</span>
                     <span class="winner-chip-time">{{ formatTime(w.drawn_at) }}</span>
+                    <button class="chip-void-btn" (click)="voidAndRedraw(w)" title="Void win for {{ w.participant_name }} and return prize to pool">
+                      &times;
+                    </button>
                   </div>
                 }
               </div>
@@ -78,7 +85,7 @@ import { AppComponent } from '../../app';
         </div>
 
         <!-- Full Table -->
-        <div class="card history-card" style="padding:0;overflow:hidden">
+        <div class="card history-card">
           <div class="table-section-header">
             <h3>All Draw History ({{ filteredHistory().length }} of {{ history().length }})</h3>
             <div class="history-search-wrap">
@@ -102,6 +109,7 @@ import { AppComponent } from '../../app';
                   <th>Prize</th>
                   <th>Tier</th>
                   <th>Drawn At</th>
+                  <th style="text-align:right">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -116,12 +124,31 @@ import { AppComponent } from '../../app';
                       </span>
                     </td>
                     <td style="color:var(--text-secondary);font-size:12px">{{ formatTime(row.drawn_at) }}</td>
+                    <td style="text-align:right">
+                      <button class="btn btn-danger btn-sm" (click)="voidAndRedraw(row)" title="Void win for {{ row.participant_name }} and restore 1 item to {{ row.prize_title }}">
+                        Void Win
+                      </button>
+                    </td>
                   </tr>
                 }
               </tbody>
             </table>
           </div>
         </div>
+      }
+
+      <!-- Custom Themed Void Confirmation Dialog -->
+      @if (confirmVoidModal(); as row) {
+        <app-confirm-dialog
+          title="Void Winner Record?"
+          [message]="'Are you sure you want to void the win for ' + row.participant_name + '?'"
+          [detail]="'This will remove this record and restore 1 item to ' + row.prize_title + ' so it can be redrawn.'"
+          confirmLabel="Yes, Void Win"
+          cancelLabel="Cancel"
+          type="danger"
+          (confirm)="executeConfirmVoid()"
+          (cancel)="cancelConfirmVoid()">
+        </app-confirm-dialog>
       }
     </div>
   `,
@@ -239,6 +266,25 @@ import { AppComponent } from '../../app';
       flex-shrink: 0;
     }
 
+    .chip-void-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 4px;
+      border-radius: 3px;
+      opacity: 0.6;
+      transition: all 0.15s ease;
+
+      &:hover {
+        opacity: 1;
+        color: var(--red);
+        background: #fde8e8;
+      }
+    }
+
     .table-section-header {
       padding: 12px 16px;
       border-bottom: 1px solid var(--border);
@@ -266,6 +312,7 @@ import { AppComponent } from '../../app';
 })
 export class WinnersBoardComponent implements OnInit {
   readonly searchQuery = signal('');
+  readonly confirmVoidModal = signal<DrawHistoryWithDetails | null>(null);
   readonly history = computed(() => this.winnerSvc.history());
   readonly grouped = computed(() => this.winnerSvc.winnersGroupedByPrize());
   readonly filteredHistory = computed(() => {
@@ -281,9 +328,28 @@ export class WinnersBoardComponent implements OnInit {
 
   constructor(
     public winnerSvc: WinnerService,
+    private raffleSvc: RaffleService,
+    private router: Router,
     public app: AppComponent
   ) { }
   ngOnInit(): void { this.winnerSvc.refresh(); }
+
+  voidAndRedraw(row: DrawHistoryWithDetails): void {
+    this.confirmVoidModal.set(row);
+  }
+
+  cancelConfirmVoid(): void {
+    this.confirmVoidModal.set(null);
+  }
+
+  executeConfirmVoid(): void {
+    const row = this.confirmVoidModal();
+    if (!row) return;
+
+    this.raffleSvc.voidWinnerAndRestorePrize(row.prize_id, row.participant_id, row.id);
+    this.winnerSvc.refresh();
+    this.confirmVoidModal.set(null);
+  }
 
   formatTime(dt: string): string {
     try {

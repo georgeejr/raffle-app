@@ -359,6 +359,17 @@ export class SqliteService {
     );
   }
 
+  deleteDrawHistory(id: number): void {
+    this.run('DELETE FROM draw_history WHERE id = ?', [id]);
+  }
+
+  deleteDrawHistoryByWinner(prizeId: number, participantId: number): void {
+    this.run(
+      'DELETE FROM draw_history WHERE id IN (SELECT id FROM draw_history WHERE prize_id = ? AND participant_id = ? ORDER BY id DESC LIMIT 1)',
+      [prizeId, participantId]
+    );
+  }
+
   getDrawHistoryWithDetails(): DrawHistoryWithDetails[] {
     return this.query<DrawHistoryWithDetails>(`
       SELECT

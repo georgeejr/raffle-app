@@ -3,6 +3,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WheelComponent, WheelSegment } from './wheel.component';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
 import { ParticipantService } from '../../core/services/participant.service';
 import { RaffleService } from '../../core/services/raffle.service';
 import { WinnerService } from '../../core/services/winner.service';
@@ -20,7 +21,7 @@ interface WinnerDisplay {
 @Component({
   selector: 'app-raffle-view',
   standalone: true,
-  imports: [CommonModule, WheelComponent],
+  imports: [CommonModule, WheelComponent, ConfirmDialogComponent],
   template: `
     <div class="raffle-view" [class.fullscreen]="isFullscreen()">
 
@@ -66,6 +67,7 @@ interface WinnerDisplay {
             <app-wheel
               #wheel
               [segments]="wheelSegments()"
+              [spinDurationMs]="spinDurationMs()"
               (spinRequested)="triggerSpin($event)"
               (winnerSelected)="onWinnerSelected($event)">
             </app-wheel>
@@ -197,6 +199,9 @@ interface WinnerDisplay {
                         <div class="batch-winner-card">
                           <span class="batch-rank">{{ i + 1 }}</span>
                           <span class="batch-name">{{ w.name }}</span>
+                          <button class="batch-void-btn" (click)="onAbsentRedrawBulkWinner(w)" title="Mark {{ w.name }} absent and return prize slot for redraw">
+                            Absent
+                          </button>
                         </div>
                       }
                     </div>
@@ -233,6 +238,15 @@ interface WinnerDisplay {
 
               <!-- Actions -->
               <div class="winner-actions">
+                @if (currentBatchWinners().length === 1) {
+                  <button class="btn btn-danger btn-absent-redraw" (click)="onAbsentRedraw()" title="Winner did not attend. Void this win and restore the item to the prize.">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                    </svg>
+                    <span>Absent · Void Win</span>
+                  </button>
+                }
                 @if (needsMoreSpins()) {
                   <button class="btn btn-primary btn-next-spin" (click)="continueSpinning()">
                     <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24">
@@ -241,15 +255,29 @@ interface WinnerDisplay {
                     <span>Spin Again ({{ remainingSpins() }} left)</span>
                   </button>
                 } @else {
-                  <button class="btn btn-primary" (click)="dismissModal()" style="min-width:110px">
+                  <button class="btn btn-primary" (click)="dismissModal()" style="min-width:110px; text-align: center;">
                     Done
                   </button>
                 }
-                <button class="btn btn-secondary" (click)="dismissModal()" style="min-width:90px">Dismiss</button>
+                <button class="btn btn-secondary" (click)="dismissModal()" style="min-width:90px; text-align: center;">Close</button>
               </div>
             </div>
           </div>
         </div>
+      }
+
+      <!-- Custom Themed Absent Confirmation Modal -->
+      @if (confirmVoidModal(); as cv) {
+        <app-confirm-dialog
+          title="Mark Winner as Absent?"
+          [message]="'Are you sure ' + cv.winner.name + ' did not attend the raffle?'"
+          [detail]="'This will void their win and return 1 item to ' + cv.prizeTitle + '. The wheel will be ready to spin again whenever you are ready.'"
+          confirmLabel="Yes, Void Win"
+          cancelLabel="Cancel"
+          type="danger"
+          (confirm)="executeConfirmVoid()"
+          (cancel)="cancelConfirmVoid()">
+        </app-confirm-dialog>
       }
     </div>
   `,
@@ -534,7 +562,7 @@ interface WinnerDisplay {
 
     .prize-body { padding: 14px 16px; }
     .prize-title {
-      font-size: 18px;
+      font-size: 24px;
       text-align: center;
       font-family: 'Outfit', sans-serif;
       color: var(--green-900);
@@ -612,7 +640,7 @@ interface WinnerDisplay {
       max-height: 90vh;
       overflow-y: auto;
       animation: winner-pop 0.35s ease both;
-      overflow: hidden;
+      // overflow: hidden;
       box-shadow: 0 20px 48px rgba(0,0,0,0.22);
     }
 
@@ -870,6 +898,42 @@ interface WinnerDisplay {
       padding: 9px 20px;
       font-weight: 600;
     }
+
+    .btn-absent-redraw {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 18px;
+      font-weight: 600;
+      background: #fff5f5;
+      color: #c62828;
+      border: 1.5px solid #ef9a9a;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: #ffebee;
+        border-color: #e53935;
+        color: #b71c1c;
+      }
+    }
+
+    .batch-void-btn {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: #fff5f5;
+      color: #c62828;
+      border: 1px solid #ef9a9a;
+      cursor: pointer;
+      margin-left: auto;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: #ffebee;
+        color: #b71c1c;
+      }
+    }
   `]
 })
 export class RaffleViewComponent implements OnInit {
@@ -890,6 +954,7 @@ export class RaffleViewComponent implements OnInit {
   readonly drawMode = this._drawMode.asReadonly();
   readonly currentBatchWinners = this._currentBatchWinners.asReadonly();
   readonly awardedPrize = this._awardedPrize.asReadonly();
+  readonly confirmVoidModal = signal<{ winner: WinnerDisplay; prizeTitle: string; prizeId: number } | null>(null);
   readonly isFullscreen = signal(false);
   readonly showSidePanel = signal(true);
 
@@ -903,6 +968,16 @@ export class RaffleViewComponent implements OnInit {
   readonly modalPrize = computed(() => this._awardedPrize() || this.activePrize());
   readonly upcomingPrizes = computed(() => this.raffleSvc.pendingPrizes());
   readonly totalWinners = computed(() => this.winnerSvc.history().length);
+
+  /**
+   * Suspenseful spin duration:
+   * - 14 seconds for Minor prizes
+   * - 20 seconds for Major prizes
+   */
+  readonly spinDurationMs = computed(() => {
+    const prize = this.activePrize() || this._awardedPrize();
+    return prize?.tier === 'Major' ? 20000 : 14000;
+  });
 
   readonly winProgress = computed(() => {
     const p = this.activePrize();
@@ -965,7 +1040,8 @@ export class RaffleViewComponent implements OnInit {
     this._isSpinning.set(true);
     this._spinBatchId = crypto.randomUUID();
     this._batchSize = prize.quantity_total;
-    this.wheelRef.spin(direction);
+    const duration = prize.tier === 'Major' ? 20000 : 14000;
+    this.wheelRef.spin(direction, duration);
   }
 
   onWinnerSelected(segment: WheelSegment): void {
@@ -999,9 +1075,47 @@ export class RaffleViewComponent implements OnInit {
     this.confetti.fire({ colors: ['#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA', '#FDD835', '#D81B60', '#00ACC1'] });
   }
 
+  onAbsentRedraw(): void {
+    const winner = this._currentBatchWinners()[0];
+    const prize = this.modalPrize();
+    if (!winner || !prize) return;
+    this.confirmVoidModal.set({ winner, prizeTitle: prize.title, prizeId: prize.id });
+  }
+
+  onAbsentRedrawBulkWinner(winner: WinnerDisplay): void {
+    const prize = this.modalPrize();
+    if (!prize) return;
+    this.confirmVoidModal.set({ winner, prizeTitle: prize.title, prizeId: prize.id });
+  }
+
+  cancelConfirmVoid(): void {
+    this.confirmVoidModal.set(null);
+  }
+
+  executeConfirmVoid(): void {
+    const data = this.confirmVoidModal();
+    if (!data) return;
+
+    this.raffleSvc.voidWinnerAndRestorePrize(data.prizeId, data.winner.participantId);
+    this.winnerSvc.refresh();
+    this.participantSvc.refresh();
+    this.confirmVoidModal.set(null);
+
+    // If only 1 winner was drawn, close the celebration modal completely and return to wheel in ready state
+    if (this._currentBatchWinners().length <= 1) {
+      this._showWinnerModal.set(false);
+      this._currentBatchWinners.set([]);
+      this._awardedPrize.set(null);
+    } else {
+      // If bulk draw with multiple winners, just remove this voided winner from the modal list
+      this._currentBatchWinners.update(list => list.filter(w => w.participantId !== data.winner.participantId));
+    }
+  }
+
   continueSpinning(): void {
     this._showWinnerModal.set(false);
-    setTimeout(() => { this._isSpinning.set(true); this.wheelRef.spin('down'); }, 400);
+    const duration = this.spinDurationMs();
+    setTimeout(() => { this._isSpinning.set(true); this.wheelRef.spin('down', duration); }, 400);
   }
 
   dismissModal(): void {

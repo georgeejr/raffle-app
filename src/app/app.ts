@@ -5,11 +5,12 @@ import { SqliteService } from './core/db/sqlite.service';
 import { ParticipantService } from './core/services/participant.service';
 import { RaffleService } from './core/services/raffle.service';
 import { WinnerService } from './core/services/winner.service';
+import { ConfirmDialogComponent } from './shared/components/confirm-dialog.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterModule, RouterLink, RouterLinkActive, ConfirmDialogComponent],
   template: `
     @if (!dbReady()) {
       <div class="loading-screen">
@@ -56,9 +57,48 @@ import { WinnerService } from './core/services/winner.service';
           </div>
 
           <div class="sidebar-footer">
+            <!-- Database Management Toolbar -->
+            <div class="sidebar-db-toolbar">
+              <span class="db-toolbar-title">Database</span>
+              <div class="db-toolbar-buttons">
+                <button
+                  type="button"
+                  class="sidebar-db-btn"
+                  (click)="downloadBackup()"
+                  title="Backup Database (.db) — Download a copy to your computer">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  <span>Backup</span>
+                </button>
+
+                <input
+                  #restoreInput
+                  type="file"
+                  accept=".db,.sqlite"
+                  style="display:none"
+                  (change)="onRestoreFile($event)">
+
+                <button
+                  type="button"
+                  class="sidebar-db-btn"
+                  (click)="restoreInput.click()"
+                  title="Restore Database (.db) — Load from a backup file">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>Restore</span>
+                </button>
+              </div>
+            </div>
+
             <div class="db-status">
               <span class="db-dot"></span>
-              <span>Database Active</span>
+              <span>{{ db.isServerConnected() ? 'Disk SQLite: Active' : 'Database Active' }}</span>
             </div>
             <div class="school-motto">Caritas Christi Urget Nos</div>
           </div>
@@ -69,6 +109,33 @@ import { WinnerService } from './core/services/winner.service';
           <router-outlet />
         </main>
       </div>
+
+      <!-- Custom Themed Restore Database Confirmation Dialog -->
+      @if (restoreFileToConfirm(); as file) {
+        <app-confirm-dialog
+          title="Restore Database?"
+          [message]="'Restore database from &quot;' + file.name + '&quot;?'"
+          detail="Warning: This will replace the current participants, prizes, and draw history with the contents of this backup file."
+          confirmLabel="Yes, Restore DB"
+          cancelLabel="Cancel"
+          type="danger"
+          (confirm)="executeRestore()"
+          (cancel)="cancelRestore()">
+        </app-confirm-dialog>
+      }
+
+      <!-- Custom Themed Restore Result Notification Dialog -->
+      @if (restoreStatusMessage(); as msg) {
+        <app-confirm-dialog
+          [title]="msg.title"
+          [message]="msg.message"
+          confirmLabel="OK"
+          cancelLabel=""
+          [type]="msg.type"
+          (confirm)="dismissRestoreStatus()"
+          (cancel)="dismissRestoreStatus()">
+        </app-confirm-dialog>
+      }
     }
   `,
   styles: [`
@@ -218,10 +285,11 @@ import { WinnerService } from './core/services/winner.service';
 
     .brand-name {
       font-family: 'Outfit', sans-serif;
-      font-size: 13px;
+      font-size: 18px;
       font-weight: 700;
       color: #000000ff;
       line-height: 1.2;
+      text-wrap: balance;
     }
 
     .brand-sub {
@@ -264,11 +332,54 @@ import { WinnerService } from './core/services/winner.service';
     }
 
     .sidebar-footer {
-      padding: 16px 18px;
+      padding: 14px 16px;
       border-top: 1px solid rgba(255,255,255,0.1);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
+    }
+
+    .sidebar-db-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .db-toolbar-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255, 255, 255, 0.45);
+      font-weight: 600;
+    }
+
+    .db-toolbar-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .sidebar-db-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 11.5px;
+      font-weight: 500;
+      font-family: 'Outfit', sans-serif;
+      cursor: pointer;
+      transition: all 0.15s ease;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.18);
+        border-color: rgba(255, 255, 255, 0.35);
+        color: #ffffff;
+      }
     }
 
     .db-status {
@@ -341,9 +452,11 @@ import { WinnerService } from './core/services/winner.service';
 export class AppComponent implements OnInit {
   readonly dbReady = signal(false);
   readonly isNavCollapsed = signal(false);
+  readonly restoreFileToConfirm = signal<File | null>(null);
+  readonly restoreStatusMessage = signal<{ title: string; message: string; type: 'info' | 'danger' } | null>(null);
 
   constructor(
-    private db: SqliteService,
+    public db: SqliteService,
     private participantSvc: ParticipantService,
     private raffleSvc: RaffleService,
     private winnerSvc: WinnerService
@@ -362,5 +475,49 @@ export class AppComponent implements OnInit {
     setTimeout(() => {
       window.dispatchEvent(new Event('resize'));
     }, 260);
+  }
+
+  downloadBackup(): void {
+    this.db.downloadBackup();
+  }
+
+  onRestoreFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    this.restoreFileToConfirm.set(file);
+    input.value = '';
+  }
+
+  cancelRestore(): void {
+    this.restoreFileToConfirm.set(null);
+  }
+
+  async executeRestore(): Promise<void> {
+    const file = this.restoreFileToConfirm();
+    if (!file) return;
+    this.restoreFileToConfirm.set(null);
+
+    try {
+      await this.db.restoreFromBackup(file);
+      this.participantSvc.refresh();
+      this.raffleSvc.refresh();
+      this.winnerSvc.refresh();
+      this.restoreStatusMessage.set({
+        title: 'Database Restored!',
+        message: `Successfully restored database from "${file.name}". All participants, prizes, and draw history have been updated.`,
+        type: 'info'
+      });
+    } catch (err: any) {
+      this.restoreStatusMessage.set({
+        title: 'Restore Failed',
+        message: 'Could not restore database: ' + (err?.message || err),
+        type: 'danger'
+      });
+    }
+  }
+
+  dismissRestoreStatus(): void {
+    this.restoreStatusMessage.set(null);
   }
 }

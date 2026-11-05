@@ -109,4 +109,20 @@ export class RaffleService {
     }
     this.refresh();
   }
+
+  voidWinnerAndRestorePrize(prizeId: number, participantId: number, drawHistoryId?: number): void {
+    if (drawHistoryId) {
+      this.db.deleteDrawHistory(drawHistoryId);
+    } else {
+      this.db.deleteDrawHistoryByWinner(prizeId, participantId);
+    }
+
+    const prize = this.db.getPrize(prizeId);
+    if (prize) {
+      const remaining = Math.min(prize.quantity_total, prize.quantity_remaining + 1);
+      this.db.updatePrize(prizeId, { ...prize, quantity_remaining: remaining, status: 'active' });
+      this._activePrizeId.set(prizeId);
+    }
+    this.refresh();
+  }
 }

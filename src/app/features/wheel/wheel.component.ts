@@ -166,6 +166,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
   }
 
   @Input() size = 720;
+  @Input() spinDurationMs = 14000;
   @Output() spinRequested = new EventEmitter<'down' | 'up'>();
   @Output() winnerSelected = new EventEmitter<WheelSegment>();
 
@@ -463,9 +464,10 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
   }
 
   /** Public method to trigger a spin */
-  spin(direction: 'down' | 'up' = 'down'): void {
+  spin(direction: 'down' | 'up' = 'down', durationMs?: number): void {
     if (this.isSpinning() || this.segments.length === 0) return;
 
+    const duration = durationMs ?? this.spinDurationMs;
     const n = this.segments.length;
     // Fair, uniform random winner selection from the entire participants list
     const winnerIndex = Math.floor(Math.random() * n);
@@ -479,8 +481,9 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     const currentSlotFloat = -this.currentAngle / sliceAngle;
     const currentSlot = Math.round(currentSlotFloat);
 
-    // Number of slots to advance: between 120 and 150 slots for an extended, suspenseful 8-second spin
-    const spinSlots = 120 + Math.floor(Math.random() * 30);
+    // Number of slots to advance: proportional to spin duration (e.g. 120-150 for 14s, 170-200 for 20s)
+    const baseSlots = duration >= 20000 ? 170 : 120;
+    const spinSlots = baseSlots + Math.floor(Math.random() * 30);
     // Downward spin: targetSlot decreases (angle increases, names roll top -> bottom)
     // Upward spin: targetSlot increases (angle decreases, names roll bottom -> top)
     const targetSlot = direction === 'down' ? currentSlot - spinSlots : currentSlot + spinSlots;
@@ -541,14 +544,14 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     const startAngle = this.currentAngle;
     const targetAngle = -(targetSlot * sliceAngle);
 
-    this.startSpinAnimation(startAngle, targetAngle, winner);
+    this.startSpinAnimation(startAngle, targetAngle, winner, duration);
   }
 
   /**
-   * Smooth, high-suspense deceleration curve for 8-second spin:
-   * - 0.0s - 3.5s: Fast, high-energy spin blur of passing names
-   * - 3.5s - 4.5s: Smooth gradual deceleration as names become clearly legible
-   * - 4.5s - 8.0s: Extended suspense crawl (~3.5 full seconds!), ticking slot-by-slot right into the winner
+   * Smooth, high-suspense deceleration curve:
+   * - Fast initial spin blur
+   * - Gradual deceleration as names become clearly legible
+   * - Extended suspense crawl ticking slot-by-slot right into the winner
    */
   private easeOutSuspense(t: number): number {
     const p1x = 0.10, p1y = 0.78;
@@ -567,8 +570,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     return 3 * oneMinusU * oneMinusU * u * p1y + 3 * oneMinusU * u * u * p2y + u * u * u;
   }
 
-  private startSpinAnimation(startAngle: number, targetAngle: number, winner: WheelSegment): void {
-    const duration = 16000; // 16 seconds of suspenseful spin with extended slow crawl
+  private startSpinAnimation(startAngle: number, targetAngle: number, winner: WheelSegment, duration = 14000): void {
     const startTime = performance.now();
     const totalDelta = targetAngle - startAngle;
     const sliceAngle = (Math.PI * 2) / this.DRUM_SLOTS;
