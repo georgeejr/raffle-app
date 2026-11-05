@@ -491,7 +491,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     const currentSlot = Math.round(currentSlotFloat);
 
     // Number of slots to advance: proportional to spin duration (e.g. 75-90 for 8s Minor, 95-110 for 10s Major, 190-210 for 20s Grand)
-    const baseSlots = duration >= 20000 ? 190 : (duration >= 10000 ? 95 : 75);
+    const baseSlots = duration >= 20000 ? 300 : (duration >= 10000 ? 95 : 75);
     const spinSlots = baseSlots + Math.floor(Math.random() * 15);
     // Downward spin: targetSlot decreases (angle increases, names roll top -> bottom)
     // Upward spin: targetSlot increases (angle decreases, names roll bottom -> top)

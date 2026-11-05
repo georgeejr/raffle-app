@@ -320,7 +320,7 @@ interface WinnerDisplay {
                     <span>Absent / Void</span>
                   </button>
                 }
-                <button class="btn btn-primary" (click)="dismissModal()" style="min-width:110px; text-align: center;">Done</button>
+                
                 <button class="btn btn-secondary" (click)="dismissModal()" style="min-width:90px; text-align: center;">Close</button>
               </div>
             </div>
@@ -541,6 +541,10 @@ interface WinnerDisplay {
       height: 100%;
       min-height: 0;
       overflow: hidden;
+      background-image: url('/bg.jpg');
+      background-size: cover;
+      background-repeat: no-repeat;
+      background-position:center;
     }
 
     /* Wheel Section */
@@ -552,12 +556,15 @@ interface WinnerDisplay {
       justify-content: space-between;
       gap: 12px;
       padding: 12px 18px 14px;
-      background: var(--bg-base);
+      // background: var(--bg-base);
       min-width: 0;
       min-height: 0;
       height: 100%;
       overflow: hidden;
+      
+      
     }
+
 
     .wheel-stage {
       flex: 1;
@@ -661,15 +668,15 @@ interface WinnerDisplay {
 
     /* Prize Panel */
     .prize-panel {
-      width: 500px;
+      width: 420px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
       gap: 16px;
       padding: 20px;
-      border-left: 1px solid var(--border);
+      // border-left: 1px solid var(--border);
       overflow-y: auto;
-      background: var(--bg-white);
+      // background: var(--bg-white);
     }
 
     .prize-card {
