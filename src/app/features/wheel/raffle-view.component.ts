@@ -2110,6 +2110,23 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
     const winner = this._currentBatchWinners()[0];
     const prize = this.modalPrize();
     if (!winner || !prize) return;
+
+    // For Grand Prize, bypass the resolution modal and auto-select Redraw Replacement Winner
+    if (prize.tier === 'Grand') {
+      this.participantSvc.markVoid(winner.participantId);
+      this.raffleSvc.voidWinnerAndRestorePrize(prize.id, winner.participantId, winner.drawHistoryId);
+      this.winnerSvc.refresh();
+      this.participantSvc.refresh();
+      this.raffleSvc.refresh();
+      this.participantSvc.resetForGrandPrize();
+      this.raffleSvc.setActive(prize.id);
+
+      this._showWinnerModal.set(false);
+      this._currentBatchWinners.set([]);
+      this._awardedPrize.set(null);
+      return;
+    }
+
     this.selectedInvalidOption.set('redraw');
     this.invalidResolutionModal.set({
       winner,
@@ -2209,6 +2226,23 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
     const winner = this._currentBatchWinners()[0];
     const prize = this.modalPrize();
     if (!winner || !prize) return;
+
+    if (prize.tier === 'Grand') {
+      this.cancelClaimCountdown();
+      this.participantSvc.markVoid(winner.participantId);
+      this.raffleSvc.voidWinnerAndRestorePrize(prize.id, winner.participantId, winner.drawHistoryId);
+      this.winnerSvc.refresh();
+      this.participantSvc.refresh();
+      this.raffleSvc.refresh();
+      this.participantSvc.resetForGrandPrize();
+      this.raffleSvc.setActive(prize.id);
+
+      this._showWinnerModal.set(false);
+      this._currentBatchWinners.set([]);
+      this._awardedPrize.set(null);
+      return;
+    }
+
     this.selectedInvalidOption.set('teachers');
     this.invalidResolutionModal.set({
       winner,
