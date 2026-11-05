@@ -10,12 +10,11 @@ interface PrizeForm {
   image_data: string;
   tier: PrizeTier;
   quantity_total: number;
-  draw_mode: DrawMode;
 }
 
 const DEFAULT_FORM: PrizeForm = {
   title: '', description: '', image_data: '',
-  tier: 'Minor', quantity_total: 1, draw_mode: 'sequential'
+  tier: 'Minor', quantity_total: 1
 };
 
 @Component({
@@ -48,6 +47,7 @@ const DEFAULT_FORM: PrizeForm = {
         <div class="prize-list">
           @for (prize of prizes(); track prize.id; let i = $index) {
             <div class="prize-row card" [class.major-row]="prize.tier === 'Major'"
+              [class.grand-row]="prize.tier === 'Grand'"
               [class.completed-row]="prize.status === 'completed'"
               [class.is-dragging]="draggedIndex() === i"
               [class.drag-over]="dragOverIndex() === i && draggedIndex() !== i"
@@ -81,8 +81,8 @@ const DEFAULT_FORM: PrizeForm = {
                 <div class="prize-details">
                   <div class="prize-name-row">
                     <span class="prize-name">{{ prize.title }}</span>
-                    <span class="badge" [ngClass]="prize.tier === 'Major' ? 'badge-major' : 'badge-minor'">
-                      {{ prize.tier }}
+                    <span class="badge" [ngClass]="prize.tier === 'Grand' ? 'badge-grand' : (prize.tier === 'Major' ? 'badge-major' : 'badge-minor')">
+                      {{ prize.tier === 'Grand' ? 'Grand Prize' : prize.tier }}
                     </span>
                     <span class="badge" [ngClass]="'badge-' + prize.status">{{ prize.status }}</span>
                   </div>
@@ -91,7 +91,6 @@ const DEFAULT_FORM: PrizeForm = {
                   }
                   <div class="prize-chips-row">
                     <span class="info-chip">{{ prize.quantity_remaining }}/{{ prize.quantity_total }} remaining</span>
-                    <span class="info-chip">{{ prize.draw_mode === 'bulk' ? 'Bulk Draw' : 'Sequential' }}</span>
                   </div>
                 </div>
               </div>
@@ -125,9 +124,10 @@ const DEFAULT_FORM: PrizeForm = {
                 <input class="form-control" type="text" [(ngModel)]="form.title"
                   placeholder="e.g. Smart TV 55-inch" />
               </div>
-              <div class="form-group" style="width:120px">
+              <div class="form-group" style="width:145px">
                 <label>Tier</label>
                 <select class="form-control" [(ngModel)]="form.tier">
+                  <option value="Grand">Grand Prize</option>
                   <option value="Major">Major</option>
                   <option value="Minor">Minor</option>
                 </select>
@@ -140,18 +140,9 @@ const DEFAULT_FORM: PrizeForm = {
                 placeholder="Optional details..."></textarea>
             </div>
 
-            <div class="flex gap-4">
-              <div class="form-group" style="flex:1">
-                <label>Number of Winners</label>
-                <input class="form-control" type="number" [(ngModel)]="form.quantity_total" min="1" max="999" />
-              </div>
-              <div class="form-group" style="flex:1">
-                <label>Draw Mode</label>
-                <select class="form-control" [(ngModel)]="form.draw_mode">
-                  <option value="sequential">Sequential (spin each)</option>
-                  <option value="bulk">Bulk (reveal all at once)</option>
-                </select>
-              </div>
+            <div class="form-group">
+              <label>Number of Winners / Quantity *</label>
+              <input class="form-control" type="number" [(ngModel)]="form.quantity_total" min="1" max="999" />
             </div>
 
             <div class="form-group">
@@ -241,6 +232,11 @@ const DEFAULT_FORM: PrizeForm = {
       }
 
       &.major-row { border-color: #f0cc70; background: #fffdf5; }
+      &.grand-row {
+        border-color: #ffd700;
+        background: #fffdf0;
+        box-shadow: 0 2px 8px rgba(255, 215, 0, 0.15);
+      }
       &.completed-row { opacity: 0.55; }
     }
 
@@ -405,7 +401,7 @@ export class PrizesPanelComponent implements OnInit {
       this.editingId.set(prize.id);
       this.form = {
         title: prize.title, description: prize.description, image_data: prize.image_data,
-        tier: prize.tier, quantity_total: prize.quantity_total, draw_mode: prize.draw_mode
+        tier: prize.tier, quantity_total: prize.quantity_total
       };
     } else {
       this.editingId.set(null);
@@ -423,10 +419,13 @@ export class PrizesPanelComponent implements OnInit {
       this.raffleSvc.updatePrize(id, {
         title: this.form.title, description: this.form.description,
         image_data: this.form.image_data, tier: this.form.tier,
-        quantity_total: this.form.quantity_total, draw_mode: this.form.draw_mode
+        quantity_total: this.form.quantity_total, draw_mode: 'sequential',
+        bulk_batch_size: 1
       });
     } else {
-      this.raffleSvc.createPrize({ ...this.form });
+      this.raffleSvc.createPrize({
+        ...this.form, draw_mode: 'sequential', bulk_batch_size: 1
+      });
     }
     this.closeModal();
   }

@@ -12,8 +12,8 @@ export class ParticipantService {
 
   readonly eligibleParticipants = computed(() =>
     this._allowRepeat()
-      ? this._participants()
-      : this._participants().filter(p => p.is_eligible === 1)
+      ? this._participants().filter(p => !p.is_void)
+      : this._participants().filter(p => p.is_eligible === 1 && !p.is_void)
   );
 
   readonly totalCount = computed(() => this._participants().length);
@@ -26,19 +26,29 @@ export class ParticipantService {
   }
 
   addBulk(text: string): number {
-    const names = text
-      .split(/[\n,]+/)
-      .map(n => n.trim())
-      .filter(n => n.length > 0);
+    const lines = text
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
 
-    names.forEach(name => this.db.insertParticipant(name));
+    let count = 0;
+    lines.forEach(line => {
+      // Support "Name, Grade & Section" or "Name"
+      const parts = line.split(',');
+      const name = parts[0]?.trim();
+      const gradeSection = parts.slice(1).join(',').trim();
+      if (name) {
+        this.db.insertParticipant(name, gradeSection);
+        count++;
+      }
+    });
     this.refresh();
-    return names.length;
+    return count;
   }
 
-  addOne(name: string, contactInfo = ''): void {
+  addOne(name: string, gradeSection = ''): void {
     if (!name.trim()) return;
-    this.db.insertParticipant(name, contactInfo);
+    this.db.insertParticipant(name, gradeSection);
     this.refresh();
   }
 
@@ -46,9 +56,9 @@ export class ParticipantService {
     const lines = csvText.split('\n').filter(l => l.trim());
     let count = 0;
     lines.forEach(line => {
-      const [name, contact] = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-      if (name) {
-        this.db.insertParticipant(name, contact ?? '');
+      const [name, gradeSection] = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+      if (name && name.toLowerCase() !== 'name') {
+        this.db.insertParticipant(name, gradeSection ?? '');
         count++;
       }
     });
@@ -58,6 +68,11 @@ export class ParticipantService {
 
   markDrawn(id: number): void {
     this.db.markParticipantDrawn(id);
+    this.refresh();
+  }
+
+  markVoid(id: number): void {
+    this.db.markParticipantVoid(id);
     this.refresh();
   }
 
@@ -71,16 +86,23 @@ export class ParticipantService {
     this.refresh();
   }
 
+  resetForGrandPrize(): void {
+    this.db.resetParticipantsForGrandPrize();
+    this.refresh();
+  }
+
   setAllowRepeat(allow: boolean): void {
     this._allowRepeat.set(allow);
   }
 
   exportExcel(): void {
     const rows = this._participants();
-    const headers = 'No.,Name,Contact/Reference,Status,Created At\n';
-    const lines = rows.map((p, i) =>
-      `"${i + 1}","${(p.name || '').replace(/"/g, '""')}","${(p.contact_info || '').replace(/"/g, '""')}","${p.is_eligible === 1 ? 'Eligible' : 'Drawn'}","${p.created_at || ''}"`
-    ).join('\n');
+    const headers = 'No.,Name,Grade & Section,Status,Created At\n';
+    const lines = rows.map((p, i) => {
+      const status = p.is_void === 1 ? 'Void (Invalid)' : (p.is_eligible === 1 ? 'Eligible' : 'Drawn');
+      const gs = p.grade_section || p.contact_info || '';
+      return `"${i + 1}","${(p.name || '').replace(/"/g, '""')}","${gs.replace(/"/g, '""')}","${status}","${p.created_at || ''}"`;
+    }).join('\n');
     this.download('participants.csv', 'text/csv;charset=utf-8;', '\ufeff' + headers + lines);
   }
 

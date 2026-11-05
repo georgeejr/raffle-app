@@ -33,10 +33,14 @@ export class WinnerService {
 
   exportExcel(): void {
     const rows = this._history();
-    const headers = 'Prize,Tier,Winner Name,Drawn At\n';
-    const lines = rows.map(r =>
-      `"${r.prize_title.replace(/"/g, '""')}","${r.prize_tier}","${r.participant_name.replace(/"/g, '""')}","${r.drawn_at}"`
-    ).join('\n');
+    const headers = 'Prize,Tier,Winner Name,Grade & Section,Status,Drawn At\n';
+    const lines = rows.map(r => {
+      const status = r.status === 'allocated_teachers'
+        ? 'Allocated to Teachers'
+        : (r.status === 'voided' ? 'Voided' : 'Claimed');
+      const gs = r.grade_section || '';
+      return `"${r.prize_title.replace(/"/g, '""')}","${r.prize_tier}","${r.participant_name.replace(/"/g, '""')}","${gs.replace(/"/g, '""')}","${status}","${r.drawn_at}"`;
+    }).join('\n');
     this.download('raffle-winners.csv', 'text/csv;charset=utf-8;', '\ufeff' + headers + lines);
   }
 

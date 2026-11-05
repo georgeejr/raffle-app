@@ -7,6 +7,7 @@ import { CommonModule } from '@angular/common';
 export interface WheelSegment {
   id: number;
   label: string;
+  subLabel?: string;
 }
 
 @Component({
@@ -464,14 +465,22 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
   }
 
   /** Public method to trigger a spin */
-  spin(direction: 'down' | 'up' = 'down', durationMs?: number): void {
+  spin(direction: 'down' | 'up' = 'down', durationMs?: number, targetWinner?: WheelSegment): void {
     if (this.isSpinning() || this.segments.length === 0) return;
 
     const duration = durationMs ?? this.spinDurationMs;
     const n = this.segments.length;
-    // Fair, uniform random winner selection from the entire participants list
-    const winnerIndex = Math.floor(Math.random() * n);
-    const winner = this.segments[winnerIndex];
+    // Fair, uniform random winner selection from the entire participants list (or targetWinner if specified)
+    let winner: WheelSegment;
+    let winnerIndex = -1;
+    if (targetWinner) {
+      winner = targetWinner;
+      winnerIndex = this.segments.findIndex(s => s.id === targetWinner.id);
+      if (winnerIndex === -1) winnerIndex = 0;
+    } else {
+      winnerIndex = Math.floor(Math.random() * n);
+      winner = this.segments[winnerIndex];
+    }
 
     this.isSpinning.set(true);
     this.lastTickIndex = -1;
@@ -481,54 +490,54 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
     const currentSlotFloat = -this.currentAngle / sliceAngle;
     const currentSlot = Math.round(currentSlotFloat);
 
-    // Number of slots to advance: proportional to spin duration (e.g. 120-150 for 14s, 170-200 for 20s)
-    const baseSlots = duration >= 20000 ? 170 : 120;
-    const spinSlots = baseSlots + Math.floor(Math.random() * 30);
+    // Number of slots to advance: proportional to spin duration (e.g. 75-90 for 8s Minor, 95-110 for 10s Major, 190-210 for 20s Grand)
+    const baseSlots = duration >= 20000 ? 190 : (duration >= 10000 ? 95 : 75);
+    const spinSlots = baseSlots + Math.floor(Math.random() * 15);
     // Downward spin: targetSlot decreases (angle increases, names roll top -> bottom)
     // Upward spin: targetSlot increases (angle decreases, names roll bottom -> top)
     const targetSlot = direction === 'down' ? currentSlot - spinSlots : currentSlot + spinSlots;
 
-    // Assign the winner to the exact landing slot
-    this.reelSlots.set(targetSlot, winner);
+    // Requirement 5: Weighted / Fair Spinning Logic
+    // Ensure the spinning animation visual iterates through the active participant count proportionally,
+    // cycling through the eligible participant pool so every participant is touched fairly during the reel spin.
+    const pool: WheelSegment[] = [];
+    const shuffled = [...this.segments].sort(() => Math.random() - 0.5);
+    const neededCount = Math.abs(targetSlot - currentSlot) + 40;
+    while (pool.length < neededCount) {
+      pool.push(...shuffled);
+    }
 
-    // Populate passing slots with random participants from segments so names fly by during spin
+    let poolIdx = 0;
     if (direction === 'down') {
       for (let s = currentSlot - 1; s > targetSlot; s--) {
-        if (!this.reelSlots.has(s)) {
-          const randIdx = Math.floor(Math.random() * n);
-          this.reelSlots.set(s, this.segments[randIdx]);
+        let seg = pool[poolIdx++ % pool.length];
+        if (s === targetSlot + 1 && seg.id === winner.id && n > 1) {
+          seg = this.segments[(winnerIndex + 1) % n];
         }
-      }
-      for (let s = targetSlot - 1; s >= targetSlot - 10; s--) {
-        if (!this.reelSlots.has(s)) {
-          const randIdx = Math.floor(Math.random() * n);
-          this.reelSlots.set(s, this.segments[randIdx]);
-        }
-      }
-      for (let s = targetSlot + 1; s <= targetSlot + 10; s++) {
-        if (!this.reelSlots.has(s)) {
-          const randIdx = Math.floor(Math.random() * n);
-          this.reelSlots.set(s, this.segments[randIdx]);
-        }
+        this.reelSlots.set(s, seg);
       }
     } else {
       for (let s = currentSlot + 1; s < targetSlot; s++) {
-        if (!this.reelSlots.has(s)) {
-          const randIdx = Math.floor(Math.random() * n);
-          this.reelSlots.set(s, this.segments[randIdx]);
+        let seg = pool[poolIdx++ % pool.length];
+        if (s === targetSlot - 1 && seg.id === winner.id && n > 1) {
+          seg = this.segments[(winnerIndex + 1) % n];
         }
+        this.reelSlots.set(s, seg);
       }
-      for (let s = targetSlot + 1; s <= targetSlot + 10; s++) {
-        if (!this.reelSlots.has(s)) {
-          const randIdx = Math.floor(Math.random() * n);
-          this.reelSlots.set(s, this.segments[randIdx]);
-        }
+    }
+
+    // Assign the winner to the exact landing slot
+    this.reelSlots.set(targetSlot, winner);
+
+    // Populate passing slots around targetSlot with distinct active participants
+    for (let offset = 1; offset <= 10; offset++) {
+      const nextSlot = targetSlot + offset;
+      const prevSlot = targetSlot - offset;
+      if (!this.reelSlots.has(nextSlot)) {
+        this.reelSlots.set(nextSlot, this.segments[(winnerIndex + offset) % n]);
       }
-      for (let s = targetSlot - 1; s >= targetSlot - 10; s--) {
-        if (!this.reelSlots.has(s)) {
-          const randIdx = Math.floor(Math.random() * n);
-          this.reelSlots.set(s, this.segments[randIdx]);
-        }
+      if (!this.reelSlots.has(prevSlot)) {
+        this.reelSlots.set(prevSlot, this.segments[((winnerIndex - offset) % n + n) % n]);
       }
     }
 
@@ -758,7 +767,7 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // 5. Realistic 3D Cylindrical Text Foreshortening
+      // 5. Realistic 3D Cylindrical Text Foreshortening with Grade & Section Sub-Text
       if (h > 12 && panel.zScale > 0.12) {
         ctx.save();
         ctx.translate(cx, yMid);
@@ -766,21 +775,51 @@ export class WheelComponent implements OnInit, AfterViewInit, OnDestroy, OnChang
         const textScaleY = Math.max(0.35, Math.pow(panel.zScale, 0.88));
         ctx.scale(1, textScaleY);
 
-        const fontSize = Math.min(34, Math.max(14, Math.floor((h / textScaleY) * 0.44)));
-        ctx.font = `bold ${fontSize}px Outfit, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        // High contrast arcade drop shadow
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-        ctx.shadowBlur = 6;
-        ctx.shadowOffsetY = 2;
-
-        ctx.fillStyle = '#ffffff';
+        const subText = panel.segment.subLabel?.trim() || '';
+        const hasSub = subText.length > 0 && h > 22;
         const maxW = drumWidth - 32;
-        const maxChars = Math.max(3, Math.floor(maxW / (fontSize * 0.55)));
-        const label = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
-        ctx.fillText(label, 0, 0);
+
+        if (hasSub) {
+          const fontSize = Math.min(27, Math.max(13, Math.floor((h / textScaleY) * 0.35)));
+          const subFontSize = Math.min(13, Math.max(10, Math.floor(fontSize * 0.52)));
+
+          // High contrast arcade drop shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetY = 2;
+
+          // Main Name
+          ctx.font = `bold ${fontSize}px Outfit, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+
+          const maxChars = Math.max(3, Math.floor(maxW / (fontSize * 0.55)));
+          const label = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
+          ctx.fillText(label, 0, -fontSize * 0.32);
+
+          // Secondary Grade & Section Sub-Text
+          ctx.font = `600 ${subFontSize}px Outfit, Inter, sans-serif`;
+          ctx.fillStyle = '#ffe082'; // Soft warm gold for high visibility
+          const maxSubChars = Math.max(3, Math.floor(maxW / (subFontSize * 0.55)));
+          const subLabel = subText.length > maxSubChars ? subText.slice(0, maxSubChars - 1) + '…' : subText;
+          ctx.fillText(subLabel, 0, fontSize * 0.60);
+        } else {
+          const fontSize = Math.min(34, Math.max(14, Math.floor((h / textScaleY) * 0.44)));
+          ctx.font = `bold ${fontSize}px Outfit, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+
+          // High contrast arcade drop shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetY = 2;
+
+          ctx.fillStyle = '#ffffff';
+          const maxChars = Math.max(3, Math.floor(maxW / (fontSize * 0.55)));
+          const label = name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
+          ctx.fillText(label, 0, 0);
+        }
 
         ctx.restore();
       }

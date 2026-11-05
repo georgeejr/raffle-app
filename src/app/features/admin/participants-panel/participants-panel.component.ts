@@ -36,10 +36,10 @@ import { ParticipantService } from '../../../core/services/participant.service';
         @if (inputTab() === 'bulk') {
           <div class="flex-col gap-3">
             <div class="form-group">
-              <label>Names (one per line or comma-separated)</label>
+              <label>Names &amp; Grade/Section (e.g. "Juan dela Cruz, Grade 5 - St. Jude" or one name per line)</label>
               <textarea class="form-control" rows="6"
                 [(ngModel)]="bulkText"
-                placeholder="Juan dela Cruz&#10;Maria Santos&#10;Jose Reyes, juan@example.com">
+                placeholder="Juan dela Cruz, Grade 5 - St. Jude&#10;Maria Santos, Grade 2 - St. Claire&#10;Jose Reyes, Grade 10 - St. Paul">
               </textarea>
             </div>
             <div style="display:flex; gap:10px; align-items:center; margin-top: 20px">
@@ -62,9 +62,9 @@ import { ParticipantService } from '../../../core/services/participant.service';
                   placeholder="Full name" (keyup.enter)="addOne()" />
               </div>
               <div class="form-group" style="flex:1">
-                <label>Contact / Reference</label>
+                <label>Grade &amp; Section</label>
                 <input class="form-control" type="text" [(ngModel)]="singleContact"
-                  placeholder="Email or ticket number" (keyup.enter)="addOne()" />
+                  placeholder="e.g. Grade 5 - St. Jude" (keyup.enter)="addOne()" />
               </div>
             </div>
             <div>
@@ -83,7 +83,7 @@ import { ParticipantService } from '../../../core/services/participant.service';
               <input #fileInput type="file" accept=".csv,.txt" style="display:none"
                 (change)="onFileChange($event)">
               <p class="import-label">Drop CSV file here or click to browse</p>
-              <p class="import-hint">Format: name, contact_info (one per row)</p>
+              <p class="import-hint">Format: Name, Grade &amp; Section (one per row)</p>
             </div>
             @if (importResult() > 0) {
               <span class="success-msg">Imported {{ importResult() }} participants.</span>
@@ -112,7 +112,7 @@ import { ParticipantService } from '../../../core/services/participant.service';
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
               <input class="form-control" type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
-                placeholder="Search by name or contact..." style="width:100%;padding:7px 30px 7px 32px" />
+                placeholder="Search by name or grade & section..." style="width:100%;padding:7px 30px 7px 32px" />
               @if (searchQuery()) {
                 <button (click)="searchQuery.set('')" title="Clear search"
                   style="position:absolute;right:8px;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;line-height:1;padding:2px 4px">&times;</button>
@@ -135,19 +135,21 @@ import { ParticipantService } from '../../../core/services/participant.service';
                 <tr>
                   <th>#</th>
                   <th>Name</th>
-                  <th>Contact</th>
+                  <th>Grade &amp; Section</th>
                   <th>Status</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 @for (p of filteredParticipants(); track p.id; let i = $index) {
-                  <tr [style.opacity]="p.is_eligible === 0 ? '0.5' : '1'">
+                  <tr [style.opacity]="p.is_void === 1 ? '0.4' : (p.is_eligible === 0 ? '0.6' : '1')">
                     <td style="color:var(--text-muted);width:40px">{{ i + 1 }}</td>
                     <td style="font-weight:500">{{ p.name }}</td>
-                    <td style="color:var(--text-secondary);font-size:13px">{{ p.contact_info || '—' }}</td>
+                    <td style="color:var(--text-secondary);font-size:13px">{{ p.grade_section || p.contact_info || '—' }}</td>
                     <td>
-                      @if (p.is_eligible === 1) {
+                      @if (p.is_void === 1) {
+                        <span class="badge badge-danger">Void (Invalid)</span>
+                      } @else if (p.is_eligible === 1) {
                         <span class="badge badge-active">Eligible</span>
                       } @else {
                         <span class="badge badge-completed">Drawn</span>
@@ -203,7 +205,9 @@ export class ParticipantsPanelComponent implements OnInit {
     const q = this.searchQuery().toLowerCase().trim();
     if (!q) return this.participants();
     return this.participants().filter(p =>
-      p.name.toLowerCase().includes(q) || (p.contact_info && p.contact_info.toLowerCase().includes(q))
+      p.name.toLowerCase().includes(q) ||
+      (p.grade_section && p.grade_section.toLowerCase().includes(q)) ||
+      (p.contact_info && p.contact_info.toLowerCase().includes(q))
     );
   });
 

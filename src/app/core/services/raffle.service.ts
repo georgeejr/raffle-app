@@ -99,6 +99,19 @@ export class RaffleService {
     this.refresh();
   }
 
+  clearActive(): void {
+    const current = this.activePrize();
+    if (current && current.status === 'active') {
+      this.db.updatePrize(current.id, { ...current, status: 'pending' });
+    }
+    this._activePrizeId.set(null);
+    this.refresh();
+  }
+
+  getPrize(id: number): Prize | null {
+    return this.db.getPrize(id);
+  }
+
   recordWinner(prizeId: number, participantId: number, batchId: string): void {
     this.db.insertDrawHistory(prizeId, participantId, batchId);
     const prize = this.db.getPrize(prizeId);
@@ -110,11 +123,29 @@ export class RaffleService {
     this.refresh();
   }
 
+  recordBatchWinners(prizeId: number, participantIds: number[], batchId: string): void {
+    participantIds.forEach(pid => {
+      this.db.insertDrawHistory(prizeId, pid, batchId);
+    });
+    const prize = this.db.getPrize(prizeId);
+    if (prize) {
+      const remaining = Math.max(0, prize.quantity_remaining - participantIds.length);
+      const status = remaining <= 0 ? 'completed' : 'active';
+      this.db.updatePrize(prizeId, { ...prize, quantity_remaining: remaining, status });
+    }
+    this.refresh();
+  }
+
+  allocatePrizeToTeachers(prizeId: number, participantId: number, drawHistoryId?: number): void {
+    this.db.allocateWinnerPrizeToTeachers(prizeId, participantId, drawHistoryId);
+    this.refresh();
+  }
+
   voidWinnerAndRestorePrize(prizeId: number, participantId: number, drawHistoryId?: number): void {
     if (drawHistoryId) {
-      this.db.deleteDrawHistory(drawHistoryId);
+      this.db.voidDrawHistory(drawHistoryId);
     } else {
-      this.db.deleteDrawHistoryByWinner(prizeId, participantId);
+      this.db.voidDrawHistoryByWinner(prizeId, participantId);
     }
 
     const prize = this.db.getPrize(prizeId);

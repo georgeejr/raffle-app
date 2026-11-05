@@ -154,7 +154,9 @@ export class SqliteService {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         contact_info TEXT DEFAULT '',
+        grade_section TEXT DEFAULT '',
         is_eligible INTEGER DEFAULT 1,
+        is_void INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now','localtime'))
       )
     `);
@@ -164,10 +166,11 @@ export class SqliteService {
         title TEXT NOT NULL,
         description TEXT DEFAULT '',
         image_data TEXT DEFAULT '',
-        tier TEXT CHECK(tier IN ('Major','Minor')) DEFAULT 'Minor',
+        tier TEXT CHECK(tier IN ('Grand','Major','Minor')) DEFAULT 'Minor',
         quantity_total INTEGER DEFAULT 1,
         quantity_remaining INTEGER DEFAULT 1,
         draw_mode TEXT CHECK(draw_mode IN ('bulk','sequential')) DEFAULT 'sequential',
+        bulk_batch_size INTEGER DEFAULT 1,
         sequence_order INTEGER DEFAULT 0,
         status TEXT CHECK(status IN ('pending','active','completed')) DEFAULT 'pending'
       )
@@ -178,9 +181,68 @@ export class SqliteService {
         prize_id INTEGER REFERENCES prizes(id),
         participant_id INTEGER REFERENCES participants(id),
         drawn_at TEXT DEFAULT (datetime('now','localtime')),
-        spin_batch_id TEXT DEFAULT ''
+        spin_batch_id TEXT DEFAULT '',
+        status TEXT DEFAULT 'claimed',
+        notes TEXT DEFAULT ''
       )
     `);
+
+    // Dynamic schema migrations for existing database files
+    try {
+      const partCols = this.query<{ name: string }>('PRAGMA table_info(participants)');
+      if (!partCols.some(c => c.name === 'grade_section')) {
+        this.db.run('ALTER TABLE participants ADD COLUMN grade_section TEXT DEFAULT ""');
+        this.db.run('UPDATE participants SET grade_section = contact_info WHERE (grade_section IS NULL OR grade_section = "") AND contact_info != ""');
+      }
+      if (!partCols.some(c => c.name === 'is_void')) {
+        this.db.run('ALTER TABLE participants ADD COLUMN is_void INTEGER DEFAULT 0');
+      }
+
+      const prizeCols = this.query<{ name: string }>('PRAGMA table_info(prizes)');
+      if (!prizeCols.some(c => c.name === 'bulk_batch_size')) {
+        this.db.run('ALTER TABLE prizes ADD COLUMN bulk_batch_size INTEGER DEFAULT 1');
+      }
+
+      const historyCols = this.query<{ name: string }>('PRAGMA table_info(draw_history)');
+      if (!historyCols.some(c => c.name === 'status')) {
+        this.db.run('ALTER TABLE draw_history ADD COLUMN status TEXT DEFAULT "claimed"');
+      }
+      if (!historyCols.some(c => c.name === 'notes')) {
+        this.db.run('ALTER TABLE draw_history ADD COLUMN notes TEXT DEFAULT ""');
+      }
+
+      // Migration: Ensure 'Grand' is permitted in prizes.tier CHECK constraint
+      const prizeSchema = this.query<{ sql: string }>('SELECT sql FROM sqlite_master WHERE type="table" AND name="prizes"');
+      if (prizeSchema.length > 0 && prizeSchema[0].sql && !prizeSchema[0].sql.includes("'Grand'")) {
+        this.db.run('PRAGMA foreign_keys=OFF;');
+        this.db.run(`
+          CREATE TABLE prizes_migrated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            image_data TEXT DEFAULT '',
+            tier TEXT CHECK(tier IN ('Grand','Major','Minor')) DEFAULT 'Minor',
+            quantity_total INTEGER DEFAULT 1,
+            quantity_remaining INTEGER DEFAULT 1,
+            draw_mode TEXT CHECK(draw_mode IN ('bulk','sequential')) DEFAULT 'sequential',
+            bulk_batch_size INTEGER DEFAULT 1,
+            sequence_order INTEGER DEFAULT 0,
+            status TEXT CHECK(status IN ('pending','active','completed')) DEFAULT 'pending'
+          );
+        `);
+        this.db.run(`
+          INSERT INTO prizes_migrated (id, title, description, image_data, tier, quantity_total, quantity_remaining, draw_mode, bulk_batch_size, sequence_order, status)
+          SELECT id, title, description, image_data, tier, quantity_total, quantity_remaining, draw_mode, COALESCE(bulk_batch_size, 1), sequence_order, status FROM prizes;
+        `);
+        this.db.run('DROP TABLE prizes;');
+        this.db.run('ALTER TABLE prizes_migrated RENAME TO prizes;');
+        this.db.run('PRAGMA foreign_keys=ON;');
+        console.log('[SqliteService] Migrated prizes table to support Grand Prize tier.');
+      }
+    } catch (e) {
+      console.warn('[SqliteService] Migration warning:', e);
+    }
+
     this.persist();
   }
 
@@ -289,23 +351,44 @@ export class SqliteService {
 
   // ---- Participants ----
   getAllParticipants(): Participant[] {
-    return this.query<Participant>('SELECT * FROM participants ORDER BY name ASC');
+    return this.query<Participant>(`
+      SELECT id, name, COALESCE(grade_section, contact_info, '') AS grade_section, contact_info, is_eligible, COALESCE(is_void, 0) AS is_void, created_at
+      FROM participants
+      ORDER BY name ASC
+    `);
   }
 
   getEligibleParticipants(): Participant[] {
-    return this.query<Participant>('SELECT * FROM participants WHERE is_eligible = 1 ORDER BY name ASC');
+    return this.query<Participant>(`
+      SELECT id, name, COALESCE(grade_section, contact_info, '') AS grade_section, contact_info, is_eligible, COALESCE(is_void, 0) AS is_void, created_at
+      FROM participants
+      WHERE is_eligible = 1 AND COALESCE(is_void, 0) = 0
+      ORDER BY name ASC
+    `);
   }
 
-  insertParticipant(name: string, contactInfo = ''): void {
-    this.run('INSERT INTO participants (name, contact_info) VALUES (?, ?)', [name.trim(), contactInfo.trim()]);
+  insertParticipant(name: string, gradeSection = ''): void {
+    const gs = gradeSection.trim();
+    this.run(
+      'INSERT INTO participants (name, contact_info, grade_section) VALUES (?, ?, ?)',
+      [name.trim(), gs, gs]
+    );
   }
 
   markParticipantDrawn(id: number): void {
     this.run('UPDATE participants SET is_eligible = 0 WHERE id = ?', [id]);
   }
 
+  markParticipantVoid(id: number): void {
+    this.run('UPDATE participants SET is_void = 1, is_eligible = 0 WHERE id = ?', [id]);
+  }
+
   resetParticipantEligibility(): void {
-    this.run('UPDATE participants SET is_eligible = 1');
+    this.run('UPDATE participants SET is_eligible = 1 WHERE COALESCE(is_void, 0) = 0');
+  }
+
+  resetParticipantsForGrandPrize(): void {
+    this.run('UPDATE participants SET is_eligible = 1 WHERE COALESCE(is_void, 0) = 0');
   }
 
   deleteParticipant(id: number): void {
@@ -325,17 +408,20 @@ export class SqliteService {
     const maxOrder = this.queryOne<{ max_order: number }>('SELECT MAX(sequence_order) as max_order FROM prizes');
     const nextOrder = (maxOrder?.max_order ?? -1) + 1;
     this.run(
-      'INSERT INTO prizes (title, description, image_data, tier, quantity_total, quantity_remaining, draw_mode, sequence_order, status) VALUES (?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO prizes (title, description, image_data, tier, quantity_total, quantity_remaining, draw_mode, bulk_batch_size, sequence_order, status) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [prize.title, prize.description ?? '', prize.image_data ?? '', prize.tier ?? 'Minor',
-       prize.quantity_total ?? 1, prize.quantity_total ?? 1, prize.draw_mode ?? 'sequential', nextOrder, 'pending']
+       prize.quantity_total ?? 1, prize.quantity_total ?? 1, prize.draw_mode ?? 'sequential',
+       prize.bulk_batch_size ?? 1, nextOrder, 'pending']
     );
     return this.getLastInsertId();
   }
 
   updatePrize(id: number, prize: Partial<Prize>): void {
     this.run(
-      'UPDATE prizes SET title=?, description=?, image_data=?, tier=?, quantity_total=?, quantity_remaining=?, draw_mode=?, sequence_order=?, status=? WHERE id=?',
-      [prize.title, prize.description, prize.image_data, prize.tier, prize.quantity_total, prize.quantity_remaining, prize.draw_mode, prize.sequence_order, prize.status, id]
+      'UPDATE prizes SET title=?, description=?, image_data=?, tier=?, quantity_total=?, quantity_remaining=?, draw_mode=?, bulk_batch_size=?, sequence_order=?, status=? WHERE id=?',
+      [prize.title, prize.description, prize.image_data, prize.tier, prize.quantity_total,
+       prize.quantity_remaining, prize.draw_mode, prize.bulk_batch_size ?? 1,
+       prize.sequence_order, prize.status, id]
     );
   }
 
@@ -352,11 +438,43 @@ export class SqliteService {
   }
 
   // ---- Draw History ----
-  insertDrawHistory(prizeId: number, participantId: number, batchId: string): void {
+  insertDrawHistory(prizeId: number, participantId: number, batchId: string, status = 'claimed', notes = ''): void {
     this.run(
-      'INSERT INTO draw_history (prize_id, participant_id, spin_batch_id) VALUES (?,?,?)',
-      [prizeId, participantId, batchId]
+      'INSERT INTO draw_history (prize_id, participant_id, spin_batch_id, status, notes) VALUES (?,?,?,?,?)',
+      [prizeId, participantId, batchId, status, notes]
     );
+  }
+
+  allocateWinnerPrizeToTeachers(prizeId: number, participantId: number, drawHistoryId?: number): void {
+    if (drawHistoryId) {
+      this.run('UPDATE draw_history SET status = "allocated_teachers", notes = "Allocated to Teachers (Invalid Winner)" WHERE id = ?', [drawHistoryId]);
+    } else {
+      this.run(`
+        UPDATE draw_history
+        SET status = "allocated_teachers", notes = "Allocated to Teachers (Invalid Winner)"
+        WHERE id IN (
+          SELECT id FROM draw_history
+          WHERE prize_id = ? AND participant_id = ?
+          ORDER BY id DESC LIMIT 1
+        )
+      `, [prizeId, participantId]);
+    }
+  }
+
+  voidDrawHistory(id: number, notes = 'Invalid (Redrawn)'): void {
+    this.run('UPDATE draw_history SET status = "voided", notes = ? WHERE id = ?', [notes, id]);
+  }
+
+  voidDrawHistoryByWinner(prizeId: number, participantId: number, notes = 'Invalid (Redrawn)'): void {
+    this.run(`
+      UPDATE draw_history
+      SET status = "voided", notes = ?
+      WHERE id IN (
+        SELECT id FROM draw_history
+        WHERE prize_id = ? AND participant_id = ?
+        ORDER BY id DESC LIMIT 1
+      )
+    `, [notes, prizeId, participantId]);
   }
 
   deleteDrawHistory(id: number): void {
@@ -374,7 +492,10 @@ export class SqliteService {
     return this.query<DrawHistoryWithDetails>(`
       SELECT
         dh.id, dh.prize_id, dh.participant_id, dh.drawn_at, dh.spin_batch_id,
+        COALESCE(dh.status, 'claimed') AS status,
+        COALESCE(dh.notes, '') AS notes,
         COALESCE(p.name, 'Unknown Participant') AS participant_name,
+        COALESCE(p.grade_section, p.contact_info, '') AS grade_section,
         COALESCE(pr.title, 'Unknown Prize') AS prize_title,
         COALESCE(pr.tier, 'Minor') AS prize_tier,
         pr.image_data AS prize_image_data

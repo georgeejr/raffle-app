@@ -2,18 +2,19 @@ import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
 import { WinnerService } from '../../core/services/winner.service';
 import { RaffleService } from '../../core/services/raffle.service';
+import { SqliteService } from '../../core/db/sqlite.service';
 import { DrawHistoryWithDetails } from '../../core/models/models';
 import { AppComponent } from '../../app';
 
 @Component({
   selector: 'app-winners-board',
   standalone: true,
-  imports: [CommonModule, FormsModule, ConfirmDialogComponent],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="winners-layout">
+      <!-- Header -->
       <div class="winners-header">
         <div class="winners-header-left">
           @if (app.isNavCollapsed()) {
@@ -25,8 +26,14 @@ import { AppComponent } from '../../app';
             </button>
           }
           <div>
-            <h1>Winners Board</h1>
-            <p class="header-sub">{{ history().length }} total winners drawn</p>
+            <h1>Winners Board &amp; Draw History</h1>
+            <p class="header-sub">
+              <strong>{{ totalValidCount() }}</strong> valid winner{{ totalValidCount() === 1 ? '' : 's' }}
+              @if (totalVoidCount() > 0) {
+                <span> &middot; <strong style="color:var(--red)">{{ totalVoidCount() }}</strong> void (invalid)</span>
+              }
+              <span> &middot; <strong>{{ history().length }}</strong> total draw logs</span>
+            </p>
           </div>
         </div>
         <button class="btn btn-secondary btn-sm" (click)="winnerSvc.exportExcel()" [disabled]="history().length === 0">
@@ -34,6 +41,69 @@ import { AppComponent } from '../../app';
         </button>
       </div>
 
+      <!-- Filters & Search Toolbar -->
+      <div class="card board-filter-card">
+        <div class="filter-row">
+          <!-- Search box -->
+          <div class="search-field-wrap">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="search-field-icon">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              class="form-control search-input"
+              type="text"
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
+              placeholder="Search winners, grades, prizes, notes..."
+            />
+            @if (searchQuery()) {
+              <button class="clear-search-btn" (click)="searchQuery.set('')" title="Clear search">&times;</button>
+            }
+          </div>
+
+          <!-- Tier Filter -->
+          <div class="filter-select-wrap">
+            <label class="filter-label">Tier:</label>
+            <select class="form-control filter-select" [ngModel]="selectedTier()" (ngModelChange)="selectedTier.set($event)">
+              <option value="All">All Tiers</option>
+              <option value="Grand">Grand Prize</option>
+              <option value="Major">Major Prize</option>
+              <option value="Minor">Minor Prize</option>
+            </select>
+          </div>
+
+          <!-- Prize Filter -->
+          <div class="filter-select-wrap">
+            <label class="filter-label">Prize:</label>
+            <select class="form-control filter-select" [ngModel]="selectedPrize()" (ngModelChange)="selectedPrize.set($event)">
+              <option value="All">All Prizes</option>
+              @for (p of prizeOptions(); track p) {
+                <option [value]="p">{{ p }}</option>
+              }
+            </select>
+          </div>
+
+          <!-- Status Filter -->
+          <div class="filter-select-wrap">
+            <label class="filter-label">Status:</label>
+            <select class="form-control filter-select" [ngModel]="selectedStatus()" (ngModelChange)="selectedStatus.set($event)">
+              <option value="All">All Statuses</option>
+              <option value="claimed">Claimed</option>
+              <option value="allocated_teachers">Assigned to Teachers</option>
+              <option value="voided">Void (Invalid)</option>
+            </select>
+          </div>
+
+          <!-- Reset Filter -->
+          @if (searchQuery() || selectedTier() !== 'All' || selectedPrize() !== 'All' || selectedStatus() !== 'All') {
+            <button class="btn btn-ghost btn-sm reset-filter-btn" (click)="resetFilters()">
+              Reset Filters
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Main Draw History Table View -->
       @if (history().length === 0) {
         <div class="empty-state card">
           <div class="empty-icon">
@@ -42,92 +112,80 @@ import { AppComponent } from '../../app';
             </svg>
           </div>
           <h4>No winners yet</h4>
-          <p>Complete a raffle draw to see winners here.</p>
+          <p>Complete a raffle draw to see records here.</p>
+        </div>
+      } @else if (filteredHistory().length === 0) {
+        <div class="empty-state card">
+          <h4>No matching draw records</h4>
+          <p>Try adjusting your search query or filter options above.</p>
+          <button class="btn btn-secondary btn-sm" (click)="resetFilters()" style="margin-top:10px">Clear Filters</button>
         </div>
       } @else {
-        <!-- Grouped by Prize -->
-        <div class="groups">
-          @for (group of grouped(); track (group.title + '-' + $index)) {
-            <div class="prize-group card" [class.major-group]="group.tier === 'Major'">
-              <div class="group-header">
-                <div class="group-left">
-                  @if (group.image) {
-                    <img [src]="group.image" class="group-img" alt="Prize" />
-                  } @else {
-                    <div class="group-img-placeholder"></div>
-                  }
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h3 class="group-title">{{ group.title }}</h3>
-                      <span class="badge" [ngClass]="group.tier === 'Major' ? 'badge-major' : 'badge-minor'">
-                        {{ group.tier }}
-                      </span>
-                    </div>
-                    <p class="group-count">{{ group.winners.length }} winner{{ group.winners.length !== 1 ? 's' : '' }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="winners-grid">
-                @for (w of group.winners; track (w.id ? w.id + '-' + i : i); let i = $index) {
-                  <div class="winner-chip">
-                    <span class="winner-rank">{{ i + 1 }}</span>
-                    <span class="winner-chip-name">{{ w.participant_name }}</span>
-                    <span class="winner-chip-time">{{ formatTime(w.drawn_at) }}</span>
-                    <button class="chip-void-btn" (click)="voidAndRedraw(w)" title="Void win for {{ w.participant_name }} and return prize to pool">
-                      &times;
-                    </button>
-                  </div>
-                }
-              </div>
-            </div>
-          }
-        </div>
-
-        <!-- Full Table -->
         <div class="card history-card">
-          <div class="table-section-header">
-            <h3>All Draw History ({{ filteredHistory().length }} of {{ history().length }})</h3>
-            <div class="history-search-wrap">
-              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="search-icon">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input class="form-control" type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)"
-                placeholder="Search winners or prizes..." style="width:100%;padding:6px 28px 6px 30px;font-size:13px" />
-              @if (searchQuery()) {
-                <button (click)="searchQuery.set('')" title="Clear search"
-                  style="position:absolute;right:8px;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;line-height:1;padding:2px 4px">&times;</button>
-              }
-            </div>
+          <div class="history-card-header">
+            <h3>Draw History Records ({{ filteredHistory().length }} of {{ history().length }})</h3>
           </div>
           <div class="table-wrap history-table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
+                  <th style="width:50px">#</th>
                   <th>Winner Name</th>
-                  <th>Prize</th>
+                  <th>Grade &amp; Section</th>
+                  <th>Prize Title</th>
                   <th>Tier</th>
+                  <th>Status</th>
+                  <th>Audit Notes</th>
                   <th>Drawn At</th>
                   <th style="text-align:right">Action</th>
                 </tr>
               </thead>
               <tbody>
                 @for (row of filteredHistory(); track (row.id ? row.id + '-' + i : i); let i = $index) {
-                  <tr>
-                    <td style="color:var(--text-muted);width:50px">{{ i + 1 }}</td>
-                    <td style="font-weight:600">{{ row.participant_name }}</td>
-                    <td>{{ row.prize_title }}</td>
+                  <tr [class.row-voided]="row.status === 'voided'" [class.row-teachers]="row.status === 'allocated_teachers'">
+                    <td style="color:var(--text-muted);font-weight:500">{{ i + 1 }}</td>
                     <td>
-                      <span class="badge" [ngClass]="row.prize_tier === 'Major' ? 'badge-major' : 'badge-minor'">
-                        {{ row.prize_tier }}
+                      <div class="winner-name-cell">
+                        <span class="cell-name">{{ row.participant_name }}</span>
+                      </div>
+                    </td>
+                    <td style="color:var(--text-secondary);font-size:12.5px">{{ row.grade_section || '—' }}</td>
+                    <td>
+                      <div class="prize-title-cell">
+                        @if (row.prize_image_data) {
+                          <img [src]="row.prize_image_data" class="table-prize-thumb" alt="Prize" />
+                        }
+                        <span>{{ row.prize_title }}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="badge" [ngClass]="row.prize_tier === 'Grand' ? 'badge-grand' : (row.prize_tier === 'Major' ? 'badge-major' : 'badge-minor')">
+                        {{ row.prize_tier === 'Grand' ? '★ Grand' : row.prize_tier }}
                       </span>
                     </td>
-                    <td style="color:var(--text-secondary);font-size:12px">{{ formatTime(row.drawn_at) }}</td>
+                    <td>
+                      @if (row.status === 'voided') {
+                        <span class="badge badge-void">Void (Invalid)</span>
+                      } @else if (row.status === 'allocated_teachers') {
+                        <span class="badge badge-teachers">Assigned to Teachers</span>
+                      } @else {
+                        <span class="badge badge-active">Claimed</span>
+                      }
+                    </td>
+                    <td style="font-size:12px;color:var(--text-secondary)">
+                      {{ row.notes || '—' }}
+                    </td>
+                    <td style="color:var(--text-secondary);font-size:12px;white-space:nowrap">{{ formatTime(row.drawn_at) }}</td>
                     <td style="text-align:right">
-                      <button class="btn btn-danger btn-sm" (click)="voidAndRedraw(row)" title="Void win for {{ row.participant_name }} and restore 1 item to {{ row.prize_title }}">
-                        Void Win
-                      </button>
+                      @if (row.status === 'voided') {
+                        <span class="action-muted">Voided</span>
+                      } @else if (row.status === 'allocated_teachers') {
+                        <span class="action-muted">Assigned</span>
+                      } @else {
+                        <button class="btn btn-secondary btn-sm" (click)="voidAndRedraw(row)" title="Mark invalid or resolve prize item">
+                          Resolve / Void
+                        </button>
+                      }
                     </td>
                   </tr>
                 }
@@ -137,18 +195,69 @@ import { AppComponent } from '../../app';
         </div>
       }
 
-      <!-- Custom Themed Void Confirmation Dialog -->
+      <!-- Custom Invalid Resolution Dialog (Option A: Assign to Teachers vs Option B: Redraw) -->
       @if (confirmVoidModal(); as row) {
-        <app-confirm-dialog
-          title="Void Winner Record?"
-          [message]="'Are you sure you want to void the win for ' + row.participant_name + '?'"
-          [detail]="'This will remove this record and restore 1 item to ' + row.prize_title + ' so it can be redrawn.'"
-          confirmLabel="Yes, Void Win"
-          cancelLabel="Cancel"
-          type="danger"
-          (confirm)="executeConfirmVoid()"
-          (cancel)="cancelConfirmVoid()">
-        </app-confirm-dialog>
+        <div class="modal-backdrop" (click)="$event.stopPropagation()">
+          <div class="invalid-modal card" (click)="$event.stopPropagation()">
+            <div class="invalid-modal-header">
+              <div class="invalid-warning-icon">
+                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div>
+                <h3>Invalid Winner Resolution</h3>
+                <p class="invalid-winner-name">{{ row.participant_name }} @if (row.grade_section) { <span>&middot; {{ row.grade_section }}</span> }</p>
+              </div>
+            </div>
+
+            <div class="invalid-modal-body">
+              <div class="invalid-rule-notice">
+                <span class="rule-tag">Status Update</span>
+                <span><strong>{{ row.participant_name }}</strong> will be marked as <strong>Void</strong> and excluded from all future draws.</span>
+              </div>
+
+              <p class="invalid-choose-title">Choose Prize Allocation:</p>
+
+              <div class="invalid-options-grid">
+                <!-- Option A (Default per PTO Policy) -->
+                <label class="invalid-option-card" [class.selected]="selectedInvalidOption() === 'teachers'" (click)="selectedInvalidOption.set('teachers')">
+                  <div class="option-radio">
+                    <input type="radio" name="boardInvalidOption" value="teachers" [checked]="selectedInvalidOption() === 'teachers'" />
+                  </div>
+                  <div class="option-info">
+                    <div class="option-header-row">
+                      <span class="option-title">Assign Item to Teachers &amp; Faculty</span>
+                      <span class="pto-badge">Default (PTO Rule)</span>
+                    </div>
+                    <p class="option-desc">The prize item remains awarded and is allocated directly to school teachers. Do <strong>not</strong> return it to the active pool or redraw.</p>
+                  </div>
+                </label>
+
+                <!-- Option B (Redraw) -->
+                <label class="invalid-option-card" [class.selected]="selectedInvalidOption() === 'redraw'" (click)="selectedInvalidOption.set('redraw')">
+                  <div class="option-radio">
+                    <input type="radio" name="boardInvalidOption" value="redraw" [checked]="selectedInvalidOption() === 'redraw'" />
+                  </div>
+                  <div class="option-info">
+                    <div class="option-header-row">
+                      <span class="option-title">Redraw Replacement Winner</span>
+                    </div>
+                    <p class="option-desc">Mark this draw record as voided and restore 1 item back to {{ row.prize_title }} so a replacement winner can be drawn.</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="invalid-modal-footer">
+              <button class="btn btn-secondary" (click)="cancelConfirmVoid()">Cancel</button>
+              <button class="btn btn-primary" (click)="executeConfirmVoid()">
+                {{ selectedInvalidOption() === 'teachers' ? 'Confirm: Assign to Teachers' : 'Confirm: Redraw Prize' }}
+              </button>
+            </div>
+          </div>
+        </div>
       }
     </div>
   `,
@@ -160,15 +269,121 @@ import { AppComponent } from '../../app';
       height: 100%;
       overflow-y: auto;
       padding: 20px 28px 32px;
-      gap: 20px;
+      gap: 16px;
     }
 
+    .winners-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .winners-header-left { display: flex; align-items: center; gap: 14px; }
+
+    h1 { font-size: 22px; color: var(--green-900); font-family: 'Outfit', sans-serif; }
+    .header-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+    /* Filter Card */
+    .board-filter-card {
+      padding: 12px 18px;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .filter-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .search-field-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .search-field-icon {
+      position: absolute;
+      left: 10px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 7px 30px 7px 32px;
+      font-size: 13px;
+    }
+
+    .clear-search-btn {
+      position: absolute;
+      right: 8px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 16px;
+      line-height: 1;
+      padding: 2px 4px;
+      &:hover { color: var(--text-primary); }
+    }
+
+    .filter-select-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .filter-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .filter-select {
+      padding: 6px 12px;
+      font-size: 13px;
+      min-width: 130px;
+      cursor: pointer;
+    }
+
+    .reset-filter-btn {
+      color: var(--red);
+      font-size: 12.5px;
+      &:hover { background: #ffebee; }
+    }
+
+    /* History Table Card */
     .history-card {
       border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 380px;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .history-card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: #fafbfa;
+
+      h3 {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--green-900);
+        margin: 0;
+      }
     }
 
     .history-table-wrap {
-      max-height: 520px;
+      flex: 1;
       overflow-y: auto;
       overflow-x: auto;
       scrollbar-gutter: stable;
@@ -182,159 +397,281 @@ import { AppComponent } from '../../app';
       }
     }
 
-    .winners-header {
+    .winner-name-cell {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-    }
-
-    .winners-header-left { display: flex; align-items: center; gap: 14px; }
-
-    .header-logo {
-      width: 44px; height: 44px;
-      object-fit: contain;
-      border-radius: 50%;
-      border: 1px solid var(--border-green);
-    }
-
-    h1 { font-size: 20px; color: var(--green-900); }
-    .header-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-
-    .groups { display: flex; flex-direction: column; gap: 14px; }
-
-    .prize-group { padding: 18px; }
-    .prize-group.major-group { border-color: #f0cc70; background: #fffdf5; }
-
-    .group-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-    .group-left { display: flex; align-items: center; gap: 12px; }
-
-    .group-img {
-      width: 48px; height: 48px;
-      object-fit: cover;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-    }
-    .group-img-placeholder {
-      width: 48px; height: 48px;
-      background: var(--gray-100);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-    }
-    .group-title { font-size: 16px; font-family: 'Outfit', sans-serif; color: var(--green-900); }
-    .group-count { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-
-    .winners-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 7px;
-    }
-
-    .winner-chip {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      background: var(--gray-50);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 9px 12px;
-    }
-
-    .winner-rank {
-      width: 22px; height: 22px;
-      background: var(--green);
-      color: white;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px;
-      font-weight: 700;
-      font-family: 'Outfit', sans-serif;
-      flex-shrink: 0;
-    }
-
-    .winner-chip-name {
-      flex: 1;
-      font-weight: 600;
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .winner-chip-time {
-      font-size: 11px;
-      color: var(--text-muted);
-      flex-shrink: 0;
-    }
-
-    .chip-void-btn {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-      padding: 0 4px;
-      border-radius: 3px;
-      opacity: 0.6;
-      transition: all 0.15s ease;
-
-      &:hover {
-        opacity: 1;
-        color: var(--red);
-        background: #fde8e8;
+      gap: 8px;
+      .cell-name {
+        font-weight: 600;
+        color: var(--green-900);
       }
     }
 
-    .table-section-header {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      background: var(--gray-50);
+    .prize-title-cell {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-      h3 { font-size: 14px; color: var(--green-900); }
+      gap: 8px;
     }
-    .history-search-wrap {
-      position: relative;
-      display: flex;
-      align-items: center;
-      min-width: 240px;
+
+    .table-prize-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
     }
-    .search-icon {
-      position: absolute;
-      left: 10px;
+
+    .row-voided {
+      background: #fffafa;
+      opacity: 0.75;
+      .cell-name {
+        text-decoration: line-through;
+        color: var(--text-muted);
+      }
+    }
+
+    .row-teachers {
+      background: #f7fcf7;
+    }
+
+    .badge-grand {
+      background: linear-gradient(135deg, #ffd700, #ffb300);
+      color: #2b1f00;
+      font-weight: 700;
+      border: 1px solid #e6a800;
+    }
+
+    .badge-teachers {
+      background: #e8f5e9;
+      color: #1b5e20;
+      font-weight: 600;
+      border: 1px solid #c8e6c9;
+    }
+
+    .badge-void {
+      background: #ffebee;
+      color: #c62828;
+      font-weight: 600;
+      border: 1px solid #ef9a9a;
+    }
+
+    .action-muted {
+      font-size: 12px;
+      font-weight: 600;
       color: var(--text-muted);
-      pointer-events: none;
+      padding: 4px 8px;
+    }
+
+    /* Invalid Resolution Modal in Winners Board */
+    .invalid-modal {
+      width: 100%;
+      max-width: 520px;
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .invalid-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      background: #fffafa;
+
+      h3 {
+        font-size: 18px;
+        margin: 0;
+        color: #b71c1c;
+      }
+    }
+
+    .invalid-warning-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #ffebee;
+      color: #c62828;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .invalid-winner-name {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      margin: 2px 0 0;
+      font-weight: 500;
+    }
+
+    .invalid-modal-body {
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .invalid-rule-notice {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12.5px;
+      color: #5d4037;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.4;
+    }
+
+    .rule-tag {
+      background: #ffecb3;
+      color: #6d4c41;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+
+    .invalid-choose-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--green-900);
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .invalid-options-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .invalid-option-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      background: #ffffff;
+      transition: all 0.15s ease;
+
+      &:hover { border-color: #a5d6a7; background: #f9fbf9; }
+      &.selected {
+        border-color: #2d8a3a;
+        background: #f0f7f1;
+        box-shadow: 0 0 0 1px #2d8a3a;
+      }
+    }
+
+    .option-radio {
+      padding-top: 2px;
+      input { cursor: pointer; }
+    }
+
+    .option-info { flex: 1; min-width: 0; }
+    .option-header-row { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+    .option-title { font-size: 14px; font-weight: 700; color: #1a4d22; font-family: 'Outfit', sans-serif; }
+    .pto-badge {
+      font-size: 10px; font-weight: 700;
+      color: #1b5e20; background: #c8e6c9;
+      padding: 2px 6px; border-radius: 4px;
+    }
+    .option-desc { font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.35; }
+
+    .invalid-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 22px;
+      background: var(--gray-50);
+      border-top: 1px solid var(--border);
     }
   `]
 })
 export class WinnersBoardComponent implements OnInit {
   readonly searchQuery = signal('');
+  readonly selectedTier = signal<'All' | 'Grand' | 'Major' | 'Minor'>('All');
+  readonly selectedPrize = signal<string>('All');
+  readonly selectedStatus = signal<'All' | 'claimed' | 'allocated_teachers' | 'voided'>('All');
+
   readonly confirmVoidModal = signal<DrawHistoryWithDetails | null>(null);
+  readonly selectedInvalidOption = signal<'teachers' | 'redraw'>('teachers');
+
   readonly history = computed(() => this.winnerSvc.history());
-  readonly grouped = computed(() => this.winnerSvc.winnersGroupedByPrize());
+
+  readonly prizeOptions = computed(() => {
+    const prizes = new Set<string>();
+    this.history().forEach(r => {
+      if (r.prize_title) prizes.add(r.prize_title);
+    });
+    return Array.from(prizes).sort();
+  });
+
+  readonly totalValidCount = computed(() =>
+    this.history().filter(h => h.status !== 'voided').length
+  );
+
+  readonly totalVoidCount = computed(() =>
+    this.history().filter(h => h.status === 'voided').length
+  );
+
   readonly filteredHistory = computed(() => {
     const q = this.searchQuery().toLowerCase().trim();
-    const rows = this.history();
-    if (!q) return rows;
-    return rows.filter(r =>
-      (r.participant_name && r.participant_name.toLowerCase().includes(q)) ||
-      (r.prize_title && r.prize_title.toLowerCase().includes(q)) ||
-      (r.prize_tier && r.prize_tier.toLowerCase().includes(q))
-    );
+    const tier = this.selectedTier();
+    const prize = this.selectedPrize();
+    const status = this.selectedStatus();
+
+    return this.history().filter(r => {
+      if (tier !== 'All' && r.prize_tier !== tier) return false;
+      if (prize !== 'All' && r.prize_title !== prize) return false;
+      if (status !== 'All') {
+        const rowStatus = r.status || 'claimed';
+        if (rowStatus !== status) return false;
+      }
+      if (q) {
+        const matchName = r.participant_name?.toLowerCase().includes(q);
+        const matchGrade = r.grade_section?.toLowerCase().includes(q);
+        const matchPrize = r.prize_title?.toLowerCase().includes(q);
+        const matchNotes = r.notes?.toLowerCase().includes(q);
+        if (!matchName && !matchGrade && !matchPrize && !matchNotes) return false;
+      }
+      return true;
+    });
   });
 
   constructor(
     public winnerSvc: WinnerService,
     private raffleSvc: RaffleService,
+    private sqlite: SqliteService,
     private router: Router,
     public app: AppComponent
   ) { }
-  ngOnInit(): void { this.winnerSvc.refresh(); }
+
+  ngOnInit(): void {
+    this.winnerSvc.refresh();
+  }
+
+  resetFilters(): void {
+    this.searchQuery.set('');
+    this.selectedTier.set('All');
+    this.selectedPrize.set('All');
+    this.selectedStatus.set('All');
+  }
 
   voidAndRedraw(row: DrawHistoryWithDetails): void {
+    this.selectedInvalidOption.set('teachers');
     this.confirmVoidModal.set(row);
   }
 
@@ -346,8 +683,17 @@ export class WinnersBoardComponent implements OnInit {
     const row = this.confirmVoidModal();
     if (!row) return;
 
-    this.raffleSvc.voidWinnerAndRestorePrize(row.prize_id, row.participant_id, row.id);
+    // Disqualify and mark as void
+    this.sqlite.markParticipantVoid(row.participant_id);
+
+    if (this.selectedInvalidOption() === 'teachers') {
+      this.raffleSvc.allocatePrizeToTeachers(row.prize_id, row.participant_id, row.id);
+    } else {
+      this.raffleSvc.voidWinnerAndRestorePrize(row.prize_id, row.participant_id, row.id);
+    }
+
     this.winnerSvc.refresh();
+    this.raffleSvc.refresh();
     this.confirmVoidModal.set(null);
   }
 
