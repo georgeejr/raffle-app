@@ -276,7 +276,7 @@ interface WinnerDisplay {
                         <span>{{ currentBatchWinners()[0].gradeSection }}</span>
                       </div>
                     }
-                    <div class="winner-divider"></div>
+                    <!-- <div class="winner-divider"></div> -->
                   </div>
                 } @else {
                   <div class="batch-winners-container">
