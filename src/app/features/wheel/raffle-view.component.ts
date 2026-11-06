@@ -113,7 +113,7 @@ interface WinnerDisplay {
         @if (showSidePanel()) {
           <div class="prize-panel">
             @if (activePrize() || awardedPrize(); as prize) {
-              <div class="prize-card" [class.prize-grand]="prize.tier === 'Grand'" [class.prize-major]="prize.tier === 'Major'">
+              <div class="prize-card" [class.prize-grand]="prize.tier === 'Grand'" [class.prize-major]="prize.tier === 'Major'" >
                 <div class="prize-card-header">
                   <span class="badge" [ngClass]="prize.tier === 'Grand' ? 'badge-grand' : (prize.tier === 'Major' ? 'badge-major' : 'badge-minor')">
                     {{ prize.tier === 'Grand' ? 'Grand Prize' : (prize.tier + ' Prize') }}
@@ -123,14 +123,10 @@ interface WinnerDisplay {
 
                 @if (prize.image_data) {
                   <img [src]="prize.image_data" alt="Prize" class="prize-image" />
-                } @else {
-                  <div class="prize-no-image">
-                    <span>No Image</span>
-                  </div>
                 }
 
                 <div class="prize-body">
-                  <h2 class="prize-title">{{ prize.title }}</h2>
+                  <h2 class="prize-title" [class.no-image]="!prize.image_data">{{ prize.title }}</h2>
                   @if (prize.description) {
                     <p class="prize-desc">{{ prize.description }}</p>
                   }
@@ -199,9 +195,9 @@ interface WinnerDisplay {
                         {{ p.tier === 'Grand' ? 'Grand' : p.tier }}
                       </span>
                       <span class="queue-name">{{ p.title }}</span>
-                      @if (activePrize()?.id === p.id) {
+                      <!-- @if (activePrize()?.id === p.id) {
                         <span class="queue-active-chip">Active</span>
-                      }
+                      } -->
                       <span class="queue-qty">x{{ p.quantity_remaining }}</span>
                     </div>
                   }
@@ -729,13 +725,21 @@ interface WinnerDisplay {
       color: var(--text-muted);
     }
 
-    .prize-body { padding: 14px 16px; }
+    .prize-body {
+      padding: 14px 16px;
+      
+    }
     .prize-title {
-      font-size: 24px;
+      font-size: 30px;
       text-align: center;
       font-family: 'Outfit', sans-serif;
       color: var(--green-900);
       margin-bottom: 6px;
+      &.no-image {
+        padding-top: 36px;
+        padding-bottom: 36px;
+
+      }
     }
     .prize-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; text-align: center; }
     .prize-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
