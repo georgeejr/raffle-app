@@ -664,7 +664,7 @@ interface WinnerDisplay {
 
     /* Prize Panel */
     .prize-panel {
-      width: 420px;
+      width: 460px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
@@ -678,7 +678,7 @@ interface WinnerDisplay {
     .prize-card {
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      overflow: hidden;
+      // overflow: hidden;
       background: var(--bg-white);
 
       // &.prize-major { border-color: #f0cc70; background: #fffdf0; }
