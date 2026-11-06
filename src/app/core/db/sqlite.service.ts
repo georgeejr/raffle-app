@@ -392,7 +392,16 @@ export class SqliteService {
   }
 
   resetParticipantsForGrandPrize(): void {
-    this.run('UPDATE participants SET is_eligible = 1 WHERE COALESCE(is_void, 0) = 0');
+    this.run(`
+      UPDATE participants SET is_eligible = 1
+      WHERE COALESCE(is_void, 0) = 0
+        AND id NOT IN (
+          SELECT dh.participant_id
+          FROM draw_history dh
+          JOIN prizes pr ON dh.prize_id = pr.id
+          WHERE pr.tier = 'Grand' AND dh.status != 'voided'
+        )
+    `);
   }
 
   deleteParticipant(id: number): void {

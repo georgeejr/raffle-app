@@ -2236,9 +2236,16 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
 
     // Check if this participant has already won any prize previously in draw history
     const history = this.winnerSvc.history();
-    const alreadyWon = history.some(h => (h.participant_name || '').trim() === targetExactName);
-    if (alreadyWon && prize.tier !== 'Grand') {
-      // They already won their single allowed item; not eligible to win again
+    const alreadyWonAny = history.some(h => (h.participant_name || '').trim() === targetExactName && h.status !== 'voided');
+    const alreadyWonGrand = history.some(h => (h.participant_name || '').trim() === targetExactName && h.prize_tier === 'Grand' && h.status !== 'voided');
+
+    // Once a participant has won a Grand Prize, they cannot win another Grand Prize
+    if (alreadyWonGrand) {
+      return null;
+    }
+
+    // Participants who won a Minor/Major prize cannot win another Minor/Major prize
+    if (alreadyWonAny && prize.tier !== 'Grand') {
       return null;
     }
 
@@ -2246,8 +2253,8 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
     const found = all.find(p => p.name.trim() === targetExactName);
     if (!found) return null;
 
-    // If they were already drawn (is_eligible === 0) and not Grand Prize, they cannot win again
-    if (found.is_eligible === 0 && prize.tier !== 'Grand') {
+    // If they were already drawn (is_eligible === 0), they cannot win again
+    if (found.is_eligible === 0) {
       return null;
     }
 

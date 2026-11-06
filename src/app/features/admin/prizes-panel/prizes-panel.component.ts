@@ -26,7 +26,7 @@ const DEFAULT_FORM: PrizeForm = {
       <div class="panel-header">
         <div>
           <h2>Prizes &amp; Raffle Sequence</h2>
-          <p class="sub-text">{{ prizes().length }} prizes configured &middot; Drag to reorder</p>
+          <p class="sub-text">{{ prizes().length }} prizes configured ({{ totalQuantity() }} total items) &middot; Drag to reorder</p>
         </div>
         <button class="btn btn-primary" (click)="openModal()">Add Prize</button>
       </div>
@@ -347,6 +347,9 @@ export class PrizesPanelComponent implements OnInit {
   readonly dragOverIndex = signal<number | null>(null);
 
   readonly prizes = computed(() => this.raffleSvc.prizes());
+  readonly totalQuantity = computed(() =>
+    this.prizes().reduce((sum, p) => sum + (p.quantity_total || 0), 0)
+  );
 
   constructor(private raffleSvc: RaffleService) { }
   ngOnInit(): void { this.raffleSvc.refresh(); }
