@@ -380,7 +380,7 @@ export class SqliteService {
   }
 
   ensureParticipantEligible(id: number): void {
-    this.run('UPDATE participants SET is_eligible = 1 WHERE id = ? AND COALESCE(is_void, 0) = 0', [id]);
+    this.run('UPDATE participants SET is_eligible = 1, is_void = 0 WHERE id = ?', [id]);
   }
 
   markParticipantVoid(id: number): void {
@@ -388,7 +388,7 @@ export class SqliteService {
   }
 
   resetParticipantEligibility(): void {
-    this.run('UPDATE participants SET is_eligible = 1 WHERE COALESCE(is_void, 0) = 0');
+    this.run('UPDATE participants SET is_eligible = 1, is_void = 0');
   }
 
   resetParticipantsForGrandPrize(): void {

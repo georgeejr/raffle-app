@@ -14,11 +14,16 @@ import { ParticipantService } from '../../../core/services/participant.service';
           <h2>Participants</h2>
           <p class="sub-text">{{ totalCount() }} total &middot; {{ eligibleCount() }} eligible</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2" style="align-items:center">
+          @if (resetSuccessMessage()) {
+            <span class="success-msg">{{ resetSuccessMessage() }}</span>
+          }
           <button class="btn btn-secondary btn-sm" (click)="exportExcel()" [disabled]="totalCount() === 0">
             Export to Excel
           </button>
-          <button class="btn btn-secondary btn-sm" (click)="resetEligibility()">Reset Participants</button>
+          <button class="btn btn-secondary btn-sm" (click)="resetEligibility()" title="Restore all participants back to Eligible">
+            Reset Participants
+          </button>
           <!-- <button class="btn btn-danger btn-sm" (click)="confirmClearAll()" [disabled]="totalCount() === 0">
             Clear All
           </button> -->
@@ -156,7 +161,14 @@ import { ParticipantService } from '../../../core/services/participant.service';
                       }
                     </td>
                     <td>
-                      <button class="btn btn-ghost btn-sm" (click)="deleteParticipant(p.id)">Remove</button>
+                      <div style="display:inline-flex;align-items:center;gap:6px">
+                        @if (p.is_void === 1 || p.is_eligible === 0) {
+                          <button class="btn btn-ghost btn-sm" (click)="restoreParticipant(p.id)" style="color:var(--green);font-weight:600" title="Restore this participant to Eligible">
+                            Restore
+                          </button>
+                        }
+                        <button class="btn btn-ghost btn-sm" (click)="deleteParticipant(p.id)">Remove</button>
+                      </div>
                     </td>
                   </tr>
                 }
@@ -194,6 +206,7 @@ export class ParticipantsPanelComponent implements OnInit {
   singleName = '';
   singleContact = '';
   readonly searchQuery = signal('');
+  readonly resetSuccessMessage = signal('');
   inputTab = signal<'bulk' | 'single' | 'import'>('bulk');
   lastAddedCount = signal(0);
   importResult = signal(0);
@@ -253,7 +266,17 @@ export class ParticipantsPanelComponent implements OnInit {
     reader.readAsText(file);
   }
 
-  resetEligibility(): void { this.participantSvc.resetEligibility(); }
+  resetEligibility(): void {
+    if (confirm('Reset all participants? This will restore all participants (including drawn and voided) back to Eligible status.')) {
+      this.participantSvc.resetEligibility();
+      this.resetSuccessMessage.set('All participants reset to Eligible!');
+      setTimeout(() => this.resetSuccessMessage.set(''), 4000);
+    }
+  }
+
+  restoreParticipant(id: number): void {
+    this.participantSvc.ensureEligible(id);
+  }
   deleteParticipant(id: number): void { this.participantSvc.deleteParticipant(id); }
 
   exportExcel(): void {
