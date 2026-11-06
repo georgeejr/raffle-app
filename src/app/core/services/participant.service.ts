@@ -71,6 +71,11 @@ export class ParticipantService {
     this.refresh();
   }
 
+  ensureEligible(id: number): void {
+    this.db.ensureParticipantEligible(id);
+    this.refresh();
+  }
+
   markVoid(id: number): void {
     this.db.markParticipantVoid(id);
     this.refresh();

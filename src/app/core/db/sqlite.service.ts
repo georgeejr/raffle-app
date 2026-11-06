@@ -379,6 +379,10 @@ export class SqliteService {
     this.run('UPDATE participants SET is_eligible = 0 WHERE id = ?', [id]);
   }
 
+  ensureParticipantEligible(id: number): void {
+    this.run('UPDATE participants SET is_eligible = 1 WHERE id = ? AND COALESCE(is_void, 0) = 0', [id]);
+  }
+
   markParticipantVoid(id: number): void {
     this.run('UPDATE participants SET is_void = 1, is_eligible = 0 WHERE id = ?', [id]);
   }

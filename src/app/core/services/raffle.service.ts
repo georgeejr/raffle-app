@@ -156,4 +156,32 @@ export class RaffleService {
     }
     this.refresh();
   }
+
+  exchangeWinnerPrize(drawHistoryId: number, oldPrizeId: number, newPrizeId: number): void {
+    const oldPrize = this.db.getPrize(oldPrizeId);
+    const newPrize = this.db.getPrize(newPrizeId);
+    if (!newPrize || newPrize.quantity_remaining <= 0) {
+      throw new Error('Selected prize is no longer available.');
+    }
+
+    // 1. Return 1 item back to old prize
+    if (oldPrize) {
+      const restored = Math.min(oldPrize.quantity_total, oldPrize.quantity_remaining + 1);
+      this.db.updatePrize(oldPrizeId, { ...oldPrize, quantity_remaining: restored, status: 'active' });
+    }
+
+    // 2. Deduct 1 item from new prize
+    const newRemaining = Math.max(0, newPrize.quantity_remaining - 1);
+    const newStatus = newRemaining === 0 ? 'completed' : 'active';
+    this.db.updatePrize(newPrizeId, { ...newPrize, quantity_remaining: newRemaining, status: newStatus });
+
+    // 3. Update the draw_history record with new prize details and an audit note
+    const note = oldPrize ? `Exchanged from "${oldPrize.title}"` : 'Exchanged prize';
+    this.db.run(
+      'UPDATE draw_history SET prize_id = ?, notes = ? WHERE id = ?',
+      [newPrizeId, note, drawHistoryId]
+    );
+
+    this.refresh();
+  }
 }

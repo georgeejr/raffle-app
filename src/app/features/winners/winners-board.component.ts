@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { WinnerService } from '../../core/services/winner.service';
 import { RaffleService } from '../../core/services/raffle.service';
 import { SqliteService } from '../../core/db/sqlite.service';
-import { DrawHistoryWithDetails } from '../../core/models/models';
+import { DrawHistoryWithDetails, Prize } from '../../core/models/models';
 import { AppComponent } from '../../app';
 
 @Component({
@@ -182,9 +182,17 @@ import { AppComponent } from '../../app';
                       } @else if (row.status === 'allocated_teachers') {
                         <span class="action-muted">Assigned</span>
                       } @else {
-                        <button class="btn btn-secondary btn-sm" (click)="voidAndRedraw(row)" title="Mark invalid or resolve prize item">
-                          Resolve / Void
-                        </button>
+                        <div class="row-actions-group">
+                          <button class="btn btn-secondary btn-sm" (click)="openChangePrizeModal(row)" title="Change or swap this winner's prize item with another available prize">
+                            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                              <path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"/>
+                            </svg>
+                            <span>Change Prize</span>
+                          </button>
+                          <button class="btn btn-ghost btn-sm btn-resolve-void" (click)="voidAndRedraw(row)" title="Mark invalid or void this winner">
+                            Resolve / Void
+                          </button>
+                        </div>
                       }
                     </td>
                   </tr>
@@ -254,6 +262,120 @@ import { AppComponent } from '../../app';
               <button class="btn btn-secondary" (click)="cancelConfirmVoid()">Cancel</button>
               <button class="btn btn-primary" (click)="executeConfirmVoid()">
                 {{ selectedInvalidOption() === 'teachers' ? 'Confirm: Assign to Teachers' : 'Confirm: Redraw Prize' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Change Awarded Prize Modal -->
+      @if (changePrizeModal(); as row) {
+        <div class="modal-backdrop" (click)="$event.stopPropagation()">
+          <div class="change-prize-modal card" (click)="$event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="change-modal-header">
+              <div class="change-modal-icon">
+                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"/>
+                </svg>
+              </div>
+              <div>
+                <h3>Change Awarded Prize</h3>
+                <p class="change-winner-name">{{ row.participant_name }} @if (row.grade_section) { <span>&middot; {{ row.grade_section }}</span> }</p>
+              </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="change-modal-body">
+              <!-- Current Prize Card -->
+              <div class="current-prize-card">
+                <span class="section-micro-label">Currently Awarded Prize</span>
+                <div class="current-prize-details">
+                  @if (row.prize_image_data) {
+                    <img [src]="row.prize_image_data" class="current-prize-thumb" alt="Prize" />
+                  }
+                  <div class="current-prize-info">
+                    <span class="badge" [ngClass]="row.prize_tier === 'Grand' ? 'badge-grand' : (row.prize_tier === 'Major' ? 'badge-major' : 'badge-minor')">
+                      {{ row.prize_tier === 'Grand' ? '★ Grand Prize' : row.prize_tier + ' Prize' }}
+                    </span>
+                    <strong class="current-prize-title">{{ row.prize_title }}</strong>
+                    <span class="return-hint-text">↩ Will return 1 item back to this prize pool</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="swap-direction-indicator">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                  <path d="M12 5v14M5 12l7 7 7-7"/>
+                </svg>
+                <span>Exchange with an Available Prize</span>
+              </div>
+
+              <!-- Available Prizes Selection -->
+              <div class="available-prizes-section">
+                <span class="section-micro-label">Select New Prize to Award:</span>
+
+                @if (availablePrizesForSwap(row.prize_id).length === 0) {
+                  <div class="no-available-prizes-alert">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>No other prizes currently have remaining stock available to exchange.</span>
+                  </div>
+                } @else {
+                  <div class="prizes-swap-grid">
+                    @for (p of availablePrizesForSwap(row.prize_id); track p.id) {
+                      <label class="prize-swap-card" [class.selected]="selectedNewPrizeId() === p.id" (click)="selectedNewPrizeId.set(p.id)">
+                        <div class="swap-card-radio">
+                          <input type="radio" name="newSwapPrize" [value]="p.id" [checked]="selectedNewPrizeId() === p.id" />
+                        </div>
+                        @if (p.image_data) {
+                          <img [src]="p.image_data" class="swap-card-img" alt="Prize" />
+                        }
+                        <div class="swap-card-info">
+                          <div class="swap-card-top-row">
+                            <span class="swap-card-title">{{ p.title }}</span>
+                            <span class="badge" [ngClass]="p.tier === 'Grand' ? 'badge-grand' : (p.tier === 'Major' ? 'badge-major' : 'badge-minor')">
+                              {{ p.tier }}
+                            </span>
+                          </div>
+                          <span class="swap-card-stock">
+                            <strong>{{ p.quantity_remaining }}</strong> of {{ p.quantity_total }} remaining
+                          </span>
+                        </div>
+                      </label>
+                    }
+                  </div>
+                }
+              </div>
+
+              <!-- Inventory Impact Summary Box -->
+              @if (selectedNewPrizeId(); as newId) {
+                @if (getPrizeById(newId); as newPrize) {
+                  <div class="inventory-impact-box">
+                    <span class="impact-title">Inventory Update Summary:</span>
+                    <ul class="impact-list">
+                      <li>
+                        <span class="impact-plus">+1 item</span>
+                        <span>returned to <strong>{{ row.prize_title }}</strong></span>
+                      </li>
+                      <li>
+                        <span class="impact-minus">-1 item</span>
+                        <span>deducted from <strong>{{ newPrize.title }}</strong></span>
+                      </li>
+                    </ul>
+                  </div>
+                }
+              }
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="change-modal-footer">
+              <button class="btn btn-secondary" (click)="cancelChangePrize()">Cancel</button>
+              <button class="btn btn-primary"
+                [disabled]="!selectedNewPrizeId()"
+                (click)="confirmChangePrize()">
+                Confirm Prize Change
               </button>
             </div>
           </div>
@@ -598,6 +720,311 @@ import { AppComponent } from '../../app';
       background: var(--gray-50);
       border-top: 1px solid var(--border);
     }
+
+    /* Row Actions Group */
+    .row-actions-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+
+    .btn-resolve-void {
+      color: #b91c1c;
+      font-size: 11.5px;
+      padding: 5px 8px;
+      &:hover {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+    }
+
+    /* Change Awarded Prize Modal */
+    .change-prize-modal {
+      width: 100%;
+      max-width: 580px;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      animation: modalScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes modalScaleUp {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .change-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 22px;
+      background: #f7faf7;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .change-modal-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      background: #e8f5e9;
+      color: #2e7d32;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .change-modal-header h3 {
+      font-size: 17px;
+      color: var(--green-900);
+      font-family: 'Outfit', sans-serif;
+      margin: 0;
+      font-weight: 800;
+    }
+
+    .change-winner-name {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin: 2px 0 0;
+      font-weight: 600;
+    }
+
+    .change-modal-body {
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 65vh;
+      overflow-y: auto;
+    }
+
+    .section-micro-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .current-prize-card {
+      background: #f8faf8;
+      border: 1.5px solid #d4e7d5;
+      border-radius: 12px;
+      padding: 12px 16px;
+    }
+
+    .current-prize-details {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .current-prize-thumb {
+      width: 52px;
+      height: 52px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: #ffffff;
+      border: 1px solid #d4e7d5;
+      padding: 3px;
+      flex-shrink: 0;
+    }
+
+    .current-prize-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .current-prize-title {
+      font-size: 16px;
+      color: var(--green-900);
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .return-hint-text {
+      font-size: 11.5px;
+      color: #2e7d32;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .swap-direction-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: -4px 0;
+      svg { color: #2e7d32; }
+    }
+
+    .available-prizes-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .no-available-prizes-alert {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 8px;
+      color: #925f0a;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .prizes-swap-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .prize-swap-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      background: #ffffff;
+      transition: all 0.15s ease;
+
+      &:hover {
+        border-color: #a5d6a7;
+        background: #f9fbf9;
+      }
+
+      &.selected {
+        border-color: #2d8a3a;
+        background: #f0f7f1;
+        box-shadow: 0 0 0 1px #2d8a3a;
+      }
+    }
+
+    .swap-card-radio {
+      display: flex;
+      align-items: center;
+      input { cursor: pointer; }
+    }
+
+    .swap-card-img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      padding: 2px;
+      flex-shrink: 0;
+    }
+
+    .swap-card-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .swap-card-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .swap-card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .swap-card-stock {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      strong { color: #15803d; }
+    }
+
+    .inventory-impact-box {
+      background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+
+    .impact-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #475569;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .impact-list {
+      margin: 0;
+      padding-left: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+
+      li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+    }
+
+    .impact-plus {
+      background: #dcfce7;
+      color: #15803d;
+      font-weight: 800;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .impact-minus {
+      background: #fee2e2;
+      color: #b91c1c;
+      font-weight: 800;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .change-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 22px;
+      background: var(--gray-50);
+      border-top: 1px solid var(--border);
+    }
   `]
 })
 export class WinnersBoardComponent implements OnInit {
@@ -608,6 +1035,9 @@ export class WinnersBoardComponent implements OnInit {
 
   readonly confirmVoidModal = signal<DrawHistoryWithDetails | null>(null);
   readonly selectedInvalidOption = signal<'teachers' | 'redraw'>('teachers');
+
+  readonly changePrizeModal = signal<DrawHistoryWithDetails | null>(null);
+  readonly selectedNewPrizeId = signal<number | null>(null);
 
   readonly history = computed(() => this.winnerSvc.history());
 
@@ -661,6 +1091,7 @@ export class WinnersBoardComponent implements OnInit {
 
   ngOnInit(): void {
     this.winnerSvc.refresh();
+    this.raffleSvc.refresh();
   }
 
   resetFilters(): void {
@@ -668,6 +1099,39 @@ export class WinnersBoardComponent implements OnInit {
     this.selectedTier.set('All');
     this.selectedPrize.set('All');
     this.selectedStatus.set('All');
+  }
+
+  availablePrizesForSwap(currentPrizeId: number): Prize[] {
+    return this.raffleSvc.prizes().filter(p => p.id !== currentPrizeId && p.quantity_remaining > 0);
+  }
+
+  getPrizeById(id: number): Prize | undefined {
+    return this.raffleSvc.prizes().find(p => p.id === id);
+  }
+
+  openChangePrizeModal(row: DrawHistoryWithDetails): void {
+    this.selectedNewPrizeId.set(null);
+    this.changePrizeModal.set(row);
+  }
+
+  cancelChangePrize(): void {
+    this.changePrizeModal.set(null);
+    this.selectedNewPrizeId.set(null);
+  }
+
+  confirmChangePrize(): void {
+    const row = this.changePrizeModal();
+    const newPrizeId = this.selectedNewPrizeId();
+    if (!row || !newPrizeId) return;
+
+    try {
+      this.raffleSvc.exchangeWinnerPrize(row.id, row.prize_id, newPrizeId);
+      this.winnerSvc.refresh();
+      this.raffleSvc.refresh();
+      this.cancelChangePrize();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to exchange prize');
+    }
   }
 
   voidAndRedraw(row: DrawHistoryWithDetails): void {

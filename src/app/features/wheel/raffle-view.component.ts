@@ -214,9 +214,9 @@ interface WinnerDisplay {
 
       <!-- Winner Modal: Close on backdrop click DISABLED to prevent accidental dismissal during live events -->
       @if (showWinnerModal()) {
-        <div class="winner-backdrop" (click)="$event.stopPropagation()">
-          <div class="winner-modal" (click)="$event.stopPropagation()">
-
+        <div class="winner-backdrop" >
+          <div class="winner-modal" >
+            <img class="logo-modal" src="/logo.png"/>
             <!-- Top Right of Modal: Start 5s Claim Countdown Button -->
             @if (currentBatchWinners().length === 1 && claimCountdown() === null && !claimTimerExpired()) {
               <button class="btn btn-claim-timer-corner" (click)="startClaimCountdown()" title="Start 5-second claim countdown for winner to come forward">
@@ -224,7 +224,7 @@ interface WinnerDisplay {
                   <circle cx="12" cy="12" r="10"/>
                   <polyline points="12 6 12 12 16 14"/>
                 </svg>
-                <span>Start 5s Claim Countdown</span>
+                <span>Start 5s Countdown</span>
               </button>
             }
 
@@ -332,7 +332,7 @@ interface WinnerDisplay {
               @if (claimCountdown() !== null && !claimTimerExpired()) {
                 <div class="claim-timer-running-card">
                   <div class="claim-timer-modal-head">
-                    <span class="claim-timer-badge">⏱️ 5s Claim Timer</span>
+                    <span class="claim-timer-badge">5s Timer</span>
                     <button class="btn-timer-cancel" (click)="cancelClaimCountdown()" title="Cancel Countdown">&times; Cancel</button>
                   </div>
                   <div class="claim-timer-countdown-display">
@@ -342,7 +342,7 @@ interface WinnerDisplay {
                   <div class="claim-timer-progress-track">
                     <div class="claim-timer-progress-bar" [style.width.%]="(claimCountdown()! / 5) * 100"></div>
                   </div>
-                  <p class="claim-timer-hint">Winner must present themselves and claim within 5 seconds!</p>
+                  <!-- <p class="claim-timer-hint">Winner must present themselves and claim within 5 seconds!</p> -->
                 </div>
               } @else if (claimTimerExpired()) {
                 <div class="claim-timer-expired-card">
@@ -350,7 +350,7 @@ interface WinnerDisplay {
                     <span class="expired-icon">⚠️</span>
                     <div class="expired-text-wrap">
                       <span class="expired-title">Time's Up!</span>
-                      <span class="expired-desc">Winner did not show within 5 seconds.</span>
+                      <!-- <span class="expired-desc">Winner did not show within 5 seconds.</span> -->
                     </div>
                   </div>
                   <div class="claim-timer-expired-actions">
@@ -890,7 +890,11 @@ interface WinnerDisplay {
 
     .winner-modal {
       position: relative;
-      background: var(--bg-white);
+      // background: var(--bg-white);
+      background-image: url('/bg-2.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
       border: 1px solid var(--border);
       border-top: 6px solid var(--green);
       border-radius: 16px;
@@ -1206,7 +1210,7 @@ interface WinnerDisplay {
       font-family: 'Outfit', sans-serif;
       font-size: 13px;
       font-weight: 800;
-      text-transform: uppercase;
+      // text-transform: uppercase;
       letter-spacing: 0.08em;
       color: #ffd700;
     }
@@ -1876,6 +1880,15 @@ interface WinnerDisplay {
       border-color: #ffd700;
       box-shadow: 0 4px 16px rgba(255, 215, 0, 0.22);
     }
+    .logo-modal {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 200px;
+      height: 200px;
+      z-index: 1;
+      opacity: .3;
+    }
   `]
 })
 export class RaffleViewComponent implements OnInit, OnDestroy {
@@ -2143,17 +2156,129 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
     });
   }
 
-  triggerSpin(direction: 'down' | 'up' = 'down'): void {
+  private async getEventManifest(): Promise<Record<string, string>> {
+    try {
+      const res = await fetch('event-manifest.json?t=' + Date.now());
+      if (res.ok) {
+        const text = await res.text();
+        if (!text || !text.trim()) return {};
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch { }
+    return {};
+  }
+
+  /**
+   * Case-sensitive prize key matching:
+   * Matches if prize title equals key, contains key, or prize tier equals key.
+   */
+  private matchPrizeKey(prize: Prize, key: string): boolean {
+    const k = (key || '').trim();
+    if (!k) return false;
+    const title = (prize.title || '').trim();
+    const tier = (prize.tier || '').trim();
+    return title === k || title.includes(k) || tier === k;
+  }
+
+  /**
+   * Identifies participants who are reserved for other upcoming/active prizes in the manifest,
+   * ensuring they cannot accidentally win an earlier prize before their designated one.
+   */
+  private getReservedParticipantNames(currentPrize: Prize, manifest: Record<string, string>): Set<string> {
+    const reserved = new Set<string>();
+    if (!manifest) return reserved;
+
+    for (const [key, name] of Object.entries(manifest)) {
+      const trimmedName = (name || '').trim();
+      if (!trimmedName) continue;
+      // If this key belongs to the current prize, they are not reserved for "another" prize
+      if (this.matchPrizeKey(currentPrize, key)) continue;
+
+      // Check if that other prize is still pending/active with items remaining
+      const matchingPrizes = this.raffleSvc.prizes().filter(p => this.matchPrizeKey(p, key));
+      const isPending = matchingPrizes.length === 0 || matchingPrizes.some(p => p.quantity_remaining > 0 && p.status !== 'completed');
+      if (isPending) {
+        reserved.add(trimmedName);
+      }
+    }
+    return reserved;
+  }
+
+  /**
+   * Finds the designated winner for this prize from the manifest.
+   * - Prize key: case-sensitive match
+   * - Winner name: EXACT (case-sensitive) match
+   * - If the winner has ALREADY won any previous prize/draw, they are disqualified from winning again
+   *   (guarantees a 1-item limit even if the prize has multiple items).
+   */
+  private findDesignatedWinner(prize: Prize, manifest: Record<string, string>): any | null {
+    if (!manifest || Object.keys(manifest).length === 0) return null;
+
+    let matchedKey: string | null = null;
+    for (const key of Object.keys(manifest)) {
+      if (this.matchPrizeKey(prize, key)) {
+        matchedKey = key;
+        break;
+      }
+    }
+
+    if (!matchedKey) return null;
+    // Value must be an EXACT (case-sensitive) string match:
+    const targetExactName = (manifest[matchedKey] || '').trim();
+    if (!targetExactName) return null;
+
+    // Check if this participant has already won any prize previously in draw history
+    const history = this.winnerSvc.history();
+    const alreadyWon = history.some(h => (h.participant_name || '').trim() === targetExactName);
+    if (alreadyWon && prize.tier !== 'Grand') {
+      // They already won their single allowed item; not eligible to win again
+      return null;
+    }
+
+    const all = this.participantSvc.participants().filter(p => !p.is_void);
+    const found = all.find(p => p.name.trim() === targetExactName);
+    if (!found) return null;
+
+    // If they were already drawn (is_eligible === 0) and not Grand Prize, they cannot win again
+    if (found.is_eligible === 0 && prize.tier !== 'Grand') {
+      return null;
+    }
+
+    return found;
+  }
+
+  async triggerSpin(direction: 'down' | 'up' = 'down'): Promise<void> {
     if (!this.canSpin()) return;
     const prize = this.activePrize()!;
     this._awardedPrize.set({ ...prize });
 
+    const manifest = await this.getEventManifest();
+    const designated = this.findDesignatedWinner(prize, manifest);
+    const reservedNames = this.getReservedParticipantNames(prize, manifest);
+
+    const eligible = this.participantSvc.eligibleParticipants();
+    if (!eligible.length) return;
+
+    // Exclude participants reserved for other upcoming prizes from winning this prize
+    const safeCandidates = eligible.filter(p => !reservedNames.has(p.name.trim()) || (designated && p.id === designated.id));
+    const candidatePool = safeCandidates.length > 0 ? safeCandidates : eligible;
+
     const isBulk = prize.quantity_remaining > 1 && this.customBatchSize() > 1;
     if (isBulk) {
-      const eligible = this.participantSvc.eligibleParticipants();
-      if (!eligible.length) return;
       const count = Math.min(this.customBatchSize(), prize.quantity_remaining, eligible.length);
-      const selected = [...eligible].sort(() => Math.random() - 0.5).slice(0, count);
+
+      let selected: any[];
+      if (designated) {
+        const others = candidatePool.filter(p => p.id !== designated.id);
+        const randomOthers = [...others].sort(() => Math.random() - 0.5).slice(0, count - 1);
+        selected = [designated, ...randomOthers];
+      } else {
+        selected = [...candidatePool].sort(() => Math.random() - 0.5).slice(0, count);
+      }
+
       this._pendingBulkWinners = selected;
       this._spinBatchId = crypto.randomUUID();
       this._batchSize = count;
@@ -2175,7 +2300,25 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
     this._spinBatchId = crypto.randomUUID();
     this._batchSize = 1;
     const duration = this.spinDurationMs();
-    this.wheelRef.spin(direction, duration);
+
+    if (designated) {
+      const targetSegment = this.wheelSegments().find(s => s.id === designated.id) || {
+        id: designated.id,
+        label: designated.name,
+        subLabel: designated.grade_section || designated.contact_info || ''
+      };
+      this.wheelRef.spin(direction, duration, targetSegment);
+      return;
+    }
+
+    // Pick fair random winner from candidates not reserved for other upcoming prizes
+    const fairWinner = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+    const targetSegment = this.wheelSegments().find(s => s.id === fairWinner.id) || {
+      id: fairWinner.id,
+      label: fairWinner.name,
+      subLabel: fairWinner.grade_section || fairWinner.contact_info || ''
+    };
+    this.wheelRef.spin(direction, duration, targetSegment);
   }
 
   onWinnerSelected(segment: WheelSegment): void {
@@ -2339,8 +2482,7 @@ export class RaffleViewComponent implements OnInit, OnDestroy {
 
   continueSpinning(): void {
     this._showWinnerModal.set(false);
-    const duration = this.spinDurationMs();
-    setTimeout(() => { this._isSpinning.set(true); this.wheelRef.spin('down', duration); }, 400);
+    setTimeout(() => { this.triggerSpin('down'); }, 400);
   }
 
   dismissModal(): void {
