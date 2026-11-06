@@ -41,7 +41,7 @@ import { ParticipantService } from '../../../core/services/participant.service';
         @if (inputTab() === 'bulk') {
           <div class="flex-col gap-3">
             <div class="form-group">
-              <label>Names &amp; Grade/Section (e.g. "Juan dela Cruz, Grade 5 - St. Jude" or one name per line)</label>
+              <label>Format: 1st Column = <strong>Name</strong>, 2nd Column = <strong>Grade &amp; Section</strong> (e.g. "Juan dela Cruz, Grade 5 - St. Jude" or "Lastname, Firstname", Grade 5)</label>
               <textarea class="form-control" rows="6"
                 [(ngModel)]="bulkText"
                 placeholder="Juan dela Cruz, Grade 5 - St. Jude&#10;Maria Santos, Grade 2 - St. Claire&#10;Jose Reyes, Grade 10 - St. Paul">
@@ -88,7 +88,7 @@ import { ParticipantService } from '../../../core/services/participant.service';
               <input #fileInput type="file" accept=".csv,.txt" style="display:none"
                 (change)="onFileChange($event)">
               <p class="import-label">Drop CSV file here or click to browse</p>
-              <p class="import-hint">Format: Name, Grade &amp; Section (one per row)</p>
+              <p class="import-hint">CSV Format: 1st Column = <strong>Name</strong> &middot; 2nd Column = <strong>Grade &amp; Section</strong></p>
             </div>
             @if (importResult() > 0) {
               <span class="success-msg">Imported {{ importResult() }} participants.</span>

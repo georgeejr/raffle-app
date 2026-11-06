@@ -25,22 +25,87 @@ export class ParticipantService {
     this._participants.set(this.db.getAllParticipants());
   }
 
-  addBulk(text: string): number {
-    const lines = text
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0);
+  /**
+   * Robust CSV parser that handles:
+   * - 1st Column: Name
+   * - 2nd Column: Grade & Section
+   * - Supports quotes around fields with embedded commas (e.g. "Dela Cruz, Juan", "Grade 5 - St. Jude")
+   * - Skips header row (e.g. "Name", "Grade & Section", "Student Name", etc.)
+   * - Handles comma and tab delimiters
+   */
+  parseCSVRows(text: string): { name: string; gradeSection: string }[] {
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = '';
+    let insideQuotes = false;
 
-    let count = 0;
-    lines.forEach(line => {
-      // Support "Name, Grade & Section" or "Name"
-      const parts = line.split(',');
-      const name = parts[0]?.trim();
-      const gradeSection = parts.slice(1).join(',').trim();
-      if (name) {
-        this.db.insertParticipant(name, gradeSection);
-        count++;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (insideQuotes && nextChar === '"') {
+          currentField += '"';
+          i++;
+        } else {
+          insideQuotes = !insideQuotes;
+        }
+      } else if ((char === ',' || char === '\t') && !insideQuotes) {
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if ((char === '\r' || char === '\n') && !insideQuotes) {
+        if (char === '\r' && nextChar === '\n') {
+          i++;
+        }
+        currentRow.push(currentField.trim());
+        currentField = '';
+        if (currentRow.some(c => c.length > 0)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+      } else {
+        currentField += char;
       }
+    }
+
+    if (currentField.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentField.trim());
+      if (currentRow.some(c => c.length > 0)) {
+        rows.push(currentRow);
+      }
+    }
+
+    const result: { name: string; gradeSection: string }[] = [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const col1 = (row[0] || '').trim().replace(/^"|"$/g, '');
+      const col2 = (row[1] || '').trim().replace(/^"|"$/g, '');
+
+      // Check if header row (e.g. "Name", "Grade & Section", "Student Name", etc.)
+      const isHeader = r === 0 && (
+        col1.toLowerCase() === 'name' ||
+        col1.toLowerCase().includes('student') ||
+        col1.toLowerCase().includes('participant') ||
+        col1.toLowerCase().includes('full name') ||
+        col2.toLowerCase().includes('grade') ||
+        col2.toLowerCase().includes('section')
+      );
+      if (isHeader) continue;
+
+      if (col1) {
+        result.push({ name: col1, gradeSection: col2 });
+      }
+    }
+
+    return result;
+  }
+
+  addBulk(text: string): number {
+    const parsed = this.parseCSVRows(text);
+    let count = 0;
+    parsed.forEach(p => {
+      this.db.insertParticipant(p.name, p.gradeSection);
+      count++;
     });
     this.refresh();
     return count;
@@ -53,14 +118,11 @@ export class ParticipantService {
   }
 
   importFromCSV(csvText: string): number {
-    const lines = csvText.split('\n').filter(l => l.trim());
+    const parsed = this.parseCSVRows(csvText);
     let count = 0;
-    lines.forEach(line => {
-      const [name, gradeSection] = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-      if (name && name.toLowerCase() !== 'name') {
-        this.db.insertParticipant(name, gradeSection ?? '');
-        count++;
-      }
+    parsed.forEach(p => {
+      this.db.insertParticipant(p.name, p.gradeSection);
+      count++;
     });
     this.refresh();
     return count;
